@@ -18,6 +18,7 @@ import (
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/ports"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/entities"
 	domainerrors "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/errors"
+	domainvalues "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
 )
 
 var _ ports.UserRepository = (*Repository)(nil)
@@ -105,11 +106,37 @@ func (r *Repository) EnableUserByID(ctx context.Context, id values.UserID) error
 	return nil
 }
 
+// SetUserRoleByID implements [ports.UserRepository].
+func (r *Repository) SetUserRoleByID(ctx context.Context, id values.UserID, role domainvalues.Role) error {
+	queries := r.queryGetter.GetQueries(ctx)
+
+	n, err := queries.SetUserRoleByID(ctx, db.SetUserRoleByIDParams{Role: role.String(), ID: id})
+	if err != nil {
+		return eris.Wrap(err, "set user role by id")
+	}
+
+	if n > 0 {
+		return nil
+	}
+
+	// The update itself was atomic; this only picks the error.
+	_, err = queries.GetUserByID(ctx, id)
+	if eris.Is(err, sql.ErrNoRows) {
+		return domainerrors.ErrUserNotFound
+	}
+
+	if err != nil {
+		return eris.Wrap(err, "get user by id")
+	}
+
+	return domainerrors.ErrUserDisabled
+}
+
 // ListUsers implements [ports.UserRepository].
-func (r *Repository) ListUsers(ctx context.Context) ([]entities.User, error) {
+func (r *Repository) ListUsers(ctx context.Context, after values.UserID, limit int) ([]entities.User, error) {
 	rows, err := r.queryGetter.
 		GetQueries(ctx).
-		ListUsers(ctx)
+		ListUsers(ctx, db.ListUsersParams{ID: after, Limit: int64(limit)})
 	if err != nil {
 		return nil, eris.Wrap(err, "list users")
 	}
@@ -173,10 +200,15 @@ func (r *Repository) GetUserByName(ctx context.Context, name values.Username) (*
 }
 
 func toUser(row db.User) entities.User {
-	return entities.User{
+	user := entities.User{
 		ID:        row.ID,
 		Name:      values.Username(row.Name),
 		Disabled:  row.DisabledAt.Valid,
 		CreatedAt: row.CreatedAt,
 	}
+
+	// The CHECK constraint keeps it valid; an unknown role would stay RoleUser, the least privileged.
+	_ = user.Role.UnmarshalText([]byte(row.Role))
+
+	return user
 }

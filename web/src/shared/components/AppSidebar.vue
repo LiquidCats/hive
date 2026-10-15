@@ -10,7 +10,10 @@ import {
   UsersRound,
 } from '@lucide/vue'
 
+import { computed } from 'vue'
+
 import { RouteNames } from '@/app/router'
+import { useAuthStore } from '@/app/stores/auth'
 import NavMain from '@/shared/components/NavMain.vue'
 import NavSecondary from '@/shared/components/NavSecondary.vue'
 import NavUser from '@/shared/components/NavUser.vue'
@@ -28,6 +31,8 @@ import {
 const props = withDefaults(defineProps<SidebarProps>(), {
   variant: 'inset',
 })
+
+const auth = useAuthStore()
 
 const data = {
   navMain: [
@@ -70,6 +75,11 @@ const data = {
     },
   ],
 }
+
+// User management is the owner's; the server refuses everyone else anyway.
+const navMain = computed(() =>
+  data.navMain.filter((item) => item.route !== RouteNames.HiveUsers || auth.user?.role === 'owner'),
+)
 </script>
 
 <template>
@@ -91,7 +101,7 @@ const data = {
       </SidebarMenu>
     </SidebarHeader>
     <SidebarContent>
-      <NavMain :items="data.navMain" />
+      <NavMain :items="navMain" />
       <NavSecondary :items="data.navSecondary" class="mt-auto" />
     </SidebarContent>
     <SidebarFooter>

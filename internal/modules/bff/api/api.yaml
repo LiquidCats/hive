@@ -13,6 +13,8 @@ tags:
 
 # Every operation requires a session unless it sets `security: []`;
 # the server enforces the same public list (server.publicPaths).
+# Roles, 403 otherwise: GET is open to every role, other methods need admin (server.RequireSession);
+# /users operations need the owner (Users use case).
 security:
   - cookieAuth: []
 
@@ -98,6 +100,14 @@ paths:
     get:
       tags: [users]
       operationId: ListUsers
+      description: Owner only.
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: nextCursor of the previous page; omit for the first page.
+          schema:
+            type: string
       responses:
         "200":
           $ref: "#/components/responses/Users"
@@ -107,7 +117,7 @@ paths:
     post:
       tags: [users]
       operationId: EnableUser
-      description: Approves a pending user or re-enables a disabled one.
+      description: Owner only. Approves a pending user or re-enables a disabled one, as a user.
       parameters:
         - $ref: "#/components/parameters/UserID"
       responses:
@@ -119,9 +129,29 @@ paths:
     post:
       tags: [users]
       operationId: DisableUser
-      description: Disables the user and ends their sessions; users cannot disable themselves.
+      description: Owner only. Disables the user, demotes them to user and ends their sessions; not the owner themselves.
       parameters:
         - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /users/{id}/role:
+    post:
+      tags: [users]
+      operationId: SetUserRole
+      description: |
+        Owner only. Makes an active user an admin or a user (409 if pending or disabled);
+        owner is not assignable and the owner cannot change their own role.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
       responses:
         "204":
           $ref: "#/components/responses/Empty"
@@ -170,21 +200,36 @@ components:
         status:
           type: string
           enum: [active, pending_approval]
+    Role:
+      type: string
+      description: owner manages users, admin reads and writes, user only reads.
+      enum: [owner, admin, user]
+    RoleRequest:
+      type: object
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
     SessionUser:
       type: object
       required:
         - id
         - username
+        - role
       properties:
         id:
           type: string
         username:
           type: string
+        role:
+          $ref: "#/components/schemas/Role"
     User:
       type: object
       required:
         - id
         - username
+        - role
         - disabled
         - createdAt
       properties:
@@ -192,12 +237,26 @@ components:
           type: string
         username:
           type: string
+        role:
+          $ref: "#/components/schemas/Role"
         disabled:
           type: boolean
           description: Awaiting approval or disabled.
         createdAt:
           type: string
           format: date-time
+    UsersPage:
+      type: object
+      required:
+        - users
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        nextCursor:
+          type: string
+          description: Pass as `cursor` for the next page; absent on the last page.
     # Opaque on purpose: the WebAuthn JSON shapes are defined by the W3C spec
     # and parsed by go-webauthn, not by this API.
     WebauthnChallenge:
@@ -247,13 +306,11 @@ components:
           schema:
             $ref: "#/components/schemas/SessionUser"
     Users:
-      description: All users, oldest first
+      description: Up to 10 users, oldest first
       content:
         application/json:
           schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/User"
+            $ref: "#/components/schemas/UsersPage"
     Error:
       description: Error
       content:
