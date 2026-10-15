@@ -1,0 +1,31 @@
+all: false
+filename: "{{.InterfaceName}}.go"
+force-file-write: true
+formatter: goimports
+log-level: info
+structname: "{{.Mock}}{{.InterfaceName}}"
+require-template-schema-exists: true
+template: testify
+template-schema: "{{.Template}}.schema.json"
+packages:
+  github.com/LiquidCats/paw/internal/kernel/ports:
+    config:
+      pkgname: kernelmocks
+      dir: "tests/mocks/kernelmocks"
+      recursive: true
+      all: true
+
+  github.com/LiquidCats/paw/internal/modules/secret-manager:
+    config:
+      pkgname: mocks
+      dir: "tests/secretmanager/mocks"
+      recursive: true
+      all: true
+
+  # github.com/redis/go-redis/v9:
+  #   interfaces:
+  #     Cmdable:
+  #     UniversalClient:
+  #   config:
+  #     pkgname: redismocks
+  #     dir: "tests/mocks/redismocks"
