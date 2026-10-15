@@ -1,0 +1,15 @@
+version: v2
+managed:
+  enabled: true
+inputs:
+  - directory: /defs/protos
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: /defs
+    # opt:
+    #   - paths=source_relative
+
+  - remote: buf.build/grpc/go
+    out: /defs
+    # opt:
+    #   - paths=source_relative

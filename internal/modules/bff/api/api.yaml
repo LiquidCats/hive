@@ -1,0 +1,262 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/heads/main/_archive_/schemas/v3.0/schema.yaml
+openapi: "3.0.0"
+info:
+  version: 1.0.0
+  title: Hive BFF Api
+tags:
+  - name: webauthn
+    description: Passkey registration and login
+  - name: auth
+    description: Session
+  - name: users
+    description: User management
+
+# Every operation requires a session unless it sets `security: []`;
+# the server enforces the same public list (server.publicPaths).
+security:
+  - cookieAuth: []
+
+# Adding an endpoint:
+#   1. add a path with a tag, operationId and `default: $ref Error`
+#   2. put request/response bodies in components/schemas, reference them
+#   3. reuse components/responses and components/parameters where possible
+#   4. public endpoints: `security: []` here and an entry in server.publicPaths
+paths:
+  /webauthn/register/start:
+    post:
+      tags: [webauthn]
+      operationId: CreateChallenge
+      security: []
+      requestBody:
+        $ref: "#/components/requestBodies/Username"
+      responses:
+        "200":
+          $ref: "#/components/responses/WebauthnChallenge"
+        default:
+          $ref: "#/components/responses/Error"
+  /webauthn/register/finish:
+    post:
+      tags: [webauthn]
+      operationId: CreateChallengeResponse
+      security: []
+      description: |
+        Creates the user. The first user is active and signed in (session cookie set);
+        later users await approval by an active user and get no session.
+      requestBody:
+        $ref: "#/components/requestBodies/WebauthnAttestation"
+      responses:
+        "200":
+          $ref: "#/components/responses/Registration"
+        default:
+          $ref: "#/components/responses/Error"
+  /webauthn/login/start:
+    post:
+      tags: [webauthn]
+      operationId: LoginChallenge
+      security: []
+      description: Usernameless login; the browser offers the user's discoverable passkeys.
+      responses:
+        "200":
+          $ref: "#/components/responses/WebauthnChallenge"
+        default:
+          $ref: "#/components/responses/Error"
+  /webauthn/login/finish:
+    post:
+      tags: [webauthn]
+      operationId: LoginChallengeResponse
+      security: []
+      description: Sets the session cookie; 403 if the user awaits approval or is disabled.
+      requestBody:
+        $ref: "#/components/requestBodies/WebauthnAssertion"
+      responses:
+        "200":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/session:
+    get:
+      tags: [auth]
+      operationId: GetSession
+      description: The signed-in user; 401 without a valid session.
+      responses:
+        "200":
+          $ref: "#/components/responses/SessionUser"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: Logout
+      security: []
+      description: Ends the session, if any, and clears the cookie.
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /users:
+    get:
+      tags: [users]
+      operationId: ListUsers
+      responses:
+        "200":
+          $ref: "#/components/responses/Users"
+        default:
+          $ref: "#/components/responses/Error"
+  /users/{id}/enable:
+    post:
+      tags: [users]
+      operationId: EnableUser
+      description: Approves a pending user or re-enables a disabled one.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /users/{id}/disable:
+    post:
+      tags: [users]
+      operationId: DisableUser
+      description: Disables the user and ends their sessions; users cannot disable themselves.
+      parameters:
+        - $ref: "#/components/parameters/UserID"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    # Opaque random token set HttpOnly by register/login finish; the server stores only its hash.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+  parameters:
+    UserID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: UUID
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    UsernameRequest:
+      type: object
+      required:
+        - username
+      properties:
+        username:
+          type: string
+          description: Case-insensitive, stored lowercase.
+          pattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}$"
+    RegistrationResult:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [active, pending_approval]
+    SessionUser:
+      type: object
+      required:
+        - id
+        - username
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+    User:
+      type: object
+      required:
+        - id
+        - username
+        - disabled
+        - createdAt
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        disabled:
+          type: boolean
+          description: Awaiting approval or disabled.
+        createdAt:
+          type: string
+          format: date-time
+    # Opaque on purpose: the WebAuthn JSON shapes are defined by the W3C spec
+    # and parsed by go-webauthn, not by this API.
+    WebauthnChallenge:
+      type: object
+    WebauthnAttestation:
+      type: object
+    WebauthnAssertion:
+      type: object
+  requestBodies:
+    Username:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/UsernameRequest"
+    WebauthnAttestation:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebauthnAttestation"
+    WebauthnAssertion:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebauthnAssertion"
+  responses:
+    Empty:
+      description: Success
+    WebauthnChallenge:
+      description: Challenge
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WebauthnChallenge"
+    Registration:
+      description: Registration result
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RegistrationResult"
+    SessionUser:
+      description: Signed-in user
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SessionUser"
+    Users:
+      description: All users, oldest first
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/User"
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

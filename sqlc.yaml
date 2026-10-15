@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "internal/modules/bff/internal/adapter/outbound/sqlite/queries"
+    schema: "internal/modules/bff/internal/adapter/outbound/sqlite/migrations"
+    gen:
+      go:
+        package: "db"
+        out: "internal/modules/bff/internal/adapter/outbound/sqlite/db"
+        overrides:
+          - db_type: "blob"
+            go_type:
+              import: "uuid"
+              type: "UUID"

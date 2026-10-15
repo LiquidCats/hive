@@ -1,0 +1,26 @@
+all: false
+filename: "{{.InterfaceName}}.go"
+force-file-write: true
+formatter: goimports
+log-level: info
+structname: "{{.Mock}}{{.InterfaceName}}"
+require-template-schema-exists: true
+template: testify
+template-schema: "{{.Template}}.schema.json"
+packages:
+  github.com/LiquidCats/hive/internal/kernel/ports:
+    config:
+      pkgname: kernelmocks
+      dir: "tests/mocks/kernelmocks"
+      recursive: true
+      all: true
+
+  github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/ports:
+    config:
+      pkgname: mocks
+      dir: "internal/modules/bff/tests/mocks"
+    interfaces:
+      UserRepository:
+      SessionRepository:
+      CredentialRepository:
+      CeremonyRepository:

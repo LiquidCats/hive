@@ -1,0 +1,45 @@
+# Local development: BFF with hot reload (air) + vite dev server.
+#   docker compose up
+#   open http://localhost:5173
+services:
+  bff:
+    build:
+      context: .
+      dockerfile: build/dev/Dockerfile
+    environment:
+      MODULE_NAME: bff
+      CGO_ENABLED: "1"
+      GOOS: linux
+      GOMEMLIMIT: 256MiB
+      # Passkeys are bound to the page the browser shows, i.e. the vite origin.
+      AUTH_RP_DISPLAY_NAME: Hive
+      AUTH_RP_ID: web.hive.orb.local
+      AUTH_RP_ORIGINS: https://web.hive.orb.local
+      AUTH_SESSION_TTL: 24h
+      DB_PATH: /app/tmp/hive.db
+      HTTP_PORT: "8080"
+      LOGS_LEVEL: debug
+    volumes:
+      - .:/app
+      - go-mod:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    # Host node_modules hold macOS native binaries; install Linux ones into the volume.
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
+    environment:
+      BFF_URL: http://bff:8080
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules
+    depends_on:
+      - bff
+
+volumes:
+  go-mod:
+  go-build:
+  web-node-modules:
