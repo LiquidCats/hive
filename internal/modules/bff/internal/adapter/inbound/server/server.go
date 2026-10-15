@@ -14,6 +14,7 @@ import (
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/ports"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/entities"
 	domainerrors "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/errors"
+	domainvalues "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
 	"github.com/LiquidCats/hive/pkg/logs"
 )
 
@@ -65,6 +66,11 @@ func (s *Server) RequireSession(next echo.HandlerFunc) echo.HandlerFunc {
 		user, err := s.auth.Session(ctx.Request().Context(), cookie.Value)
 		if err != nil {
 			return s.fail(ctx, err)
+		}
+
+		// Users only read. User management is the owner's, checked by the Users use case.
+		if ctx.Request().Method != http.MethodGet && user.Role < domainvalues.RoleAdmin {
+			return s.fail(ctx, domainerrors.ErrForbidden)
 		}
 
 		ctx.Set(userKey, user)
@@ -140,7 +146,11 @@ func (s *Server) LoginChallengeResponse(ctx *echo.Context) error {
 func (s *Server) GetSession(ctx *echo.Context) error {
 	user := currentUser(ctx)
 
-	return ctx.JSON(http.StatusOK, SessionUser{Id: user.ID.String(), Username: user.Name.String()})
+	return ctx.JSON(http.StatusOK, SessionUser{
+		Id:       user.ID.String(),
+		Username: user.Name.String(),
+		Role:     Role(user.Role.String()),
+	})
 }
 
 // Logout implements [ServerInterface].
@@ -157,17 +167,32 @@ func (s *Server) Logout(ctx *echo.Context) error {
 }
 
 // ListUsers implements [ServerInterface].
-func (s *Server) ListUsers(ctx *echo.Context) error {
-	users, err := s.users.ListUsers(ctx.Request().Context())
+func (s *Server) ListUsers(ctx *echo.Context, params ListUsersParams) error {
+	var after values.UserID
+
+	if params.Cursor != nil {
+		var err error
+		if after, err = uuid.Parse(*params.Cursor); err != nil {
+			return s.fail(ctx, errBadRequest)
+		}
+	}
+
+	users, next, err := s.users.ListUsers(ctx.Request().Context(), currentUser(ctx), after)
 	if err != nil {
 		return s.fail(ctx, err)
 	}
 
-	resp := make([]User, len(users))
+	resp := UsersPage{Users: make([]User, len(users))}
+	if next != (values.UserID{}) {
+		cursor := next.String()
+		resp.NextCursor = &cursor
+	}
+
 	for i, user := range users {
-		resp[i] = User{
+		resp.Users[i] = User{
 			Id:        user.ID.String(),
 			Username:  user.Name.String(),
+			Role:      Role(user.Role.String()),
 			Disabled:  user.Disabled,
 			CreatedAt: user.CreatedAt,
 		}
@@ -183,7 +208,7 @@ func (s *Server) EnableUser(ctx *echo.Context, id UserID) error {
 		return s.fail(ctx, errBadRequest)
 	}
 
-	if err = s.users.EnableUser(ctx.Request().Context(), userID); err != nil {
+	if err = s.users.EnableUser(ctx.Request().Context(), currentUser(ctx), userID); err != nil {
 		return s.fail(ctx, err)
 	}
 
@@ -197,7 +222,31 @@ func (s *Server) DisableUser(ctx *echo.Context, id UserID) error {
 		return s.fail(ctx, errBadRequest)
 	}
 
-	if err = s.users.DisableUser(ctx.Request().Context(), currentUser(ctx).ID, userID); err != nil {
+	if err = s.users.DisableUser(ctx.Request().Context(), currentUser(ctx), userID); err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.NoContent(http.StatusNoContent)
+}
+
+// SetUserRole implements [ServerInterface].
+func (s *Server) SetUserRole(ctx *echo.Context, id UserID) error {
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	var req RoleRequest
+	if err = ctx.Bind(&req); err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	var role domainvalues.Role
+	if err = role.UnmarshalText([]byte(req.Role)); err != nil {
+		return s.fail(ctx, err)
+	}
+
+	if err = s.users.SetRole(ctx.Request().Context(), currentUser(ctx), userID, role); err != nil {
 		return s.fail(ctx, err)
 	}
 
@@ -235,14 +284,20 @@ func (s *Server) fail(ctx *echo.Context, err error) error {
 			"Username must be 3 to 64 letters, digits, '.', '_' or '-', starting with a letter or digit"
 	case errors.Is(err, domainerrors.ErrCeremonyNotFound):
 		status, code, msg = http.StatusBadRequest, "ceremony_not_found", "Passkey request expired, try again"
-	case errors.Is(err, domainerrors.ErrCannotDisableSelf):
-		status, code, msg = http.StatusBadRequest, "cannot_disable_self", "You cannot disable your own account"
+	case errors.Is(err, domainvalues.ErrInvalidRole):
+		status, code, msg = http.StatusBadRequest, "invalid_role", "Role must be admin or user"
+	case errors.Is(err, domainerrors.ErrCannotManageSelf):
+		status, code, msg = http.StatusBadRequest, "cannot_manage_self", "You cannot change your own account"
 	case errors.Is(err, domainerrors.ErrUsernameTaken):
 		status, code, msg = http.StatusConflict, "username_taken", "Username is already taken"
+	case errors.Is(err, domainerrors.ErrUserDisabled):
+		status, code, msg = http.StatusConflict, "user_disabled", "Approve or enable the user first"
 	case errors.Is(err, domainerrors.ErrUserNotFound):
 		status, code, msg = http.StatusNotFound, "user_not_found", "User not found"
 	case errors.Is(err, domainerrors.ErrUnauthenticated):
 		status, code, msg = http.StatusUnauthorized, "unauthenticated", "Sign in required"
+	case errors.Is(err, domainerrors.ErrForbidden):
+		status, code, msg = http.StatusForbidden, "forbidden", "You do not have permission to do that"
 	case errors.Is(err, domainerrors.ErrApprovalPending):
 		status, code, msg = http.StatusForbidden, "approval_pending", "Account is awaiting approval or disabled"
 	case errors.Is(err, domainerrors.ErrVerification):

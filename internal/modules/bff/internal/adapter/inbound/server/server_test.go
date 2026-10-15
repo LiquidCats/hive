@@ -157,11 +157,14 @@ func (s *AuthSuite) TestLaterUsersNeedApproval() {
 	rec = s.do(http.MethodGet, "/users", admin)
 	s.Require().Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	var users []struct {
-		Username string `json:"username"`
-		Disabled bool   `json:"disabled"`
+	var page struct {
+		Users []struct {
+			Username string `json:"username"`
+			Disabled bool   `json:"disabled"`
+		} `json:"users"`
 	}
-	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &users))
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &page))
+	users := page.Users
 	s.Equal("alice", users[0].Username)
 	s.False(users[0].Disabled)
 	s.Equal("bob", users[1].Username)

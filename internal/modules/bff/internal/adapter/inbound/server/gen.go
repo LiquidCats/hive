@@ -30,6 +30,27 @@ func (e RegistrationResultStatus) Valid() bool {
 	}
 }
 
+// Defines values for Role.
+const (
+	RoleAdmin Role = "admin"
+	RoleOwner Role = "owner"
+	RoleUser  Role = "user"
+)
+
+// Valid indicates whether the value is a known member of the Role enum.
+func (e Role) Valid() bool {
+	switch e {
+	case RoleAdmin:
+		return true
+	case RoleOwner:
+		return true
+	case RoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string `json:"code"`
@@ -44,9 +65,21 @@ type RegistrationResult struct {
 // RegistrationResultStatus defines model for RegistrationResult.Status.
 type RegistrationResultStatus string
 
+// Role owner manages users, admin reads and writes, user only reads.
+type Role string
+
+// RoleRequest defines model for RoleRequest.
+type RoleRequest struct {
+	// Role owner manages users, admin reads and writes, user only reads.
+	Role Role `json:"role"`
+}
+
 // SessionUser defines model for SessionUser.
 type SessionUser struct {
-	Id       string `json:"id"`
+	Id string `json:"id"`
+
+	// Role owner manages users, admin reads and writes, user only reads.
+	Role     Role   `json:"role"`
 	Username string `json:"username"`
 }
 
@@ -57,6 +90,9 @@ type User struct {
 	// Disabled Awaiting approval or disabled.
 	Disabled bool   `json:"disabled"`
 	Id       string `json:"id"`
+
+	// Role owner manages users, admin reads and writes, user only reads.
+	Role     Role   `json:"role"`
 	Username string `json:"username"`
 }
 
@@ -64,6 +100,13 @@ type User struct {
 type UsernameRequest struct {
 	// Username Case-insensitive, stored lowercase.
 	Username string `json:"username"`
+}
+
+// UsersPage defines model for UsersPage.
+type UsersPage struct {
+	// NextCursor Pass as `cursor` for the next page; absent on the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+	Users      []User  `json:"users"`
 }
 
 // WebauthnAssertion defines model for WebauthnAssertion.
@@ -82,10 +125,19 @@ type UserID = string
 type Registration = RegistrationResult
 
 // Users defines model for Users.
-type Users = []User
+type Users = UsersPage
 
 // Username defines model for Username.
 type Username = UsernameRequest
+
+// ListUsersParams defines parameters for ListUsers.
+type ListUsersParams struct {
+	// Cursor nextCursor of the previous page; omit for the first page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// SetUserRoleJSONRequestBody defines body for SetUserRole for application/json ContentType.
+type SetUserRoleJSONRequestBody = RoleRequest
 
 // LoginChallengeResponseJSONRequestBody defines body for LoginChallengeResponse for application/json ContentType.
 type LoginChallengeResponseJSONRequestBody = WebauthnAssertion
@@ -106,13 +158,16 @@ type ServerInterface interface {
 	GetSession(ctx *echo.Context) error
 
 	// (GET /users)
-	ListUsers(ctx *echo.Context) error
+	ListUsers(ctx *echo.Context, params ListUsersParams) error
 
 	// (POST /users/{id}/disable)
 	DisableUser(ctx *echo.Context, id UserID) error
 
 	// (POST /users/{id}/enable)
 	EnableUser(ctx *echo.Context, id UserID) error
+
+	// (POST /users/{id}/role)
+	SetUserRole(ctx *echo.Context, id UserID) error
 
 	// (POST /webauthn/login/finish)
 	LoginChallengeResponse(ctx *echo.Context) error
@@ -154,8 +209,17 @@ func (w *ServerInterfaceWrapper) GetSession(ctx *echo.Context) error {
 func (w *ServerInterfaceWrapper) ListUsers(ctx *echo.Context) error {
 	var err error
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUsersParams
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", ctx.QueryParams(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter cursor: %s", err))
+	}
+
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListUsers(ctx)
+	err = w.Handler.ListUsers(ctx, params)
 	return err
 }
 
@@ -188,6 +252,22 @@ func (w *ServerInterfaceWrapper) EnableUser(ctx *echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.EnableUser(ctx, id)
+	return err
+}
+
+// SetUserRole converts echo context to params.
+func (w *ServerInterfaceWrapper) SetUserRole(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id UserID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetUserRole(ctx, id)
 	return err
 }
 
@@ -283,5 +363,6 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.GET(options.BaseURL+"/users", wrapper.ListUsers, options.OperationMiddlewares["ListUsers"]...)
 	router.POST(options.BaseURL+"/users/:id/enable", wrapper.EnableUser, options.OperationMiddlewares["EnableUser"]...)
 	router.POST(options.BaseURL+"/users/:id/disable", wrapper.DisableUser, options.OperationMiddlewares["DisableUser"]...)
+	router.POST(options.BaseURL+"/users/:id/role", wrapper.SetUserRole, options.OperationMiddlewares["SetUserRole"]...)
 
 }

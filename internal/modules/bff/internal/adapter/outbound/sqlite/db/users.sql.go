@@ -12,9 +12,13 @@ import (
 )
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, name, disabled_at)
-VALUES (?, ?, CASE WHEN EXISTS (SELECT 1 FROM users) THEN CURRENT_TIMESTAMP END)
-RETURNING id, name, created_at, disabled_at
+INSERT INTO users (id, name, role, disabled_at)
+VALUES (
+    ?, ?,
+    CASE WHEN EXISTS (SELECT 1 FROM users) THEN 'user' ELSE 'owner' END,
+    CASE WHEN EXISTS (SELECT 1 FROM users) THEN CURRENT_TIMESTAMP END
+)
+RETURNING id, name, created_at, disabled_at, role
 `
 
 type CreateUserParams struct {
@@ -22,7 +26,8 @@ type CreateUserParams struct {
 	Name string
 }
 
-// The first user is approved; later ones wait for approval. One statement, so two racing first sign-ups cannot both win.
+// The first user is the approved owner; later ones are users waiting for approval.
+// One statement, so two racing first sign-ups cannot both win.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
 	row := q.db.QueryRowContext(ctx, createUser, arg.ID, arg.Name)
 	var i User
@@ -31,14 +36,17 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Name,
 		&i.CreatedAt,
 		&i.DisabledAt,
+		&i.Role,
 	)
 	return i, err
 }
 
 const disableUserByID = `-- name: DisableUserByID :execrows
-UPDATE users SET disabled_at = CURRENT_TIMESTAMP WHERE id = ?
+UPDATE users SET disabled_at = CURRENT_TIMESTAMP, role = 'user' WHERE id = ?
 `
 
+// Disabling also demotes, so re-enabling yields a user, never a returning admin.
+// The owner is never disabled: Users.DisableUser refuses the actor themselves, and only the owner may call it.
 func (q *Queries) DisableUserByID(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.ExecContext(ctx, disableUserByID, id)
 	if err != nil {
@@ -60,7 +68,7 @@ func (q *Queries) EnableUserByID(ctx context.Context, id uuid.UUID) (int64, erro
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, created_at, disabled_at FROM users WHERE id = ?
+SELECT id, name, created_at, disabled_at, role FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -71,12 +79,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Name,
 		&i.CreatedAt,
 		&i.DisabledAt,
+		&i.Role,
 	)
 	return i, err
 }
 
 const getUserByName = `-- name: GetUserByName :one
-SELECT id, name, created_at, disabled_at FROM users WHERE name = ?
+SELECT id, name, created_at, disabled_at, role FROM users WHERE name = ?
 `
 
 func (q *Queries) GetUserByName(ctx context.Context, name string) (User, error) {
@@ -87,16 +96,23 @@ func (q *Queries) GetUserByName(ctx context.Context, name string) (User, error) 
 		&i.Name,
 		&i.CreatedAt,
 		&i.DisabledAt,
+		&i.Role,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, name, created_at, disabled_at FROM users ORDER BY created_at, name
+SELECT id, name, created_at, disabled_at, role FROM users WHERE id > ? ORDER BY id LIMIT ?
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := q.db.QueryContext(ctx, listUsers)
+type ListUsersParams struct {
+	ID    uuid.UUID
+	Limit int64
+}
+
+// Keyset page: IDs are UUIDv7, so id order is registration order. The first page passes the zero UUID.
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -109,6 +125,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.Name,
 			&i.CreatedAt,
 			&i.DisabledAt,
+			&i.Role,
 		); err != nil {
 			return nil, err
 		}
@@ -121,4 +138,22 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setUserRoleByID = `-- name: SetUserRoleByID :execrows
+UPDATE users SET role = ? WHERE id = ? AND disabled_at IS NULL
+`
+
+type SetUserRoleByIDParams struct {
+	Role string
+	ID   uuid.UUID
+}
+
+// Active users only, so approving a pending user always yields a user.
+func (q *Queries) SetUserRoleByID(ctx context.Context, arg SetUserRoleByIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setUserRoleByID, arg.Role, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

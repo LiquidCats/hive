@@ -8,11 +8,12 @@ import (
 
 	"github.com/LiquidCats/hive/internal/kernel/values"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/entities"
+	domainvalues "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
 )
 
 type UserRepository interface {
 	// CreateUser stores the user with its credentials atomically and returns the stored user:
-	// the first user is active, later ones are disabled until approved;
+	// the first user is the active owner, later ones are users, disabled until approved;
 	// [errors.ErrUsernameTaken] on duplicate name.
 	CreateUser(ctx context.Context, user entities.User) (*entities.User, error)
 	// GetUserByName returns the user without credentials;
@@ -21,13 +22,17 @@ type UserRepository interface {
 	// GetUserByID returns the user with its active credentials;
 	// [errors.ErrUserNotFound] if missing.
 	GetUserByID(ctx context.Context, id values.UserID) (*entities.User, error)
-	// ListUsers returns all users without credentials, oldest first.
-	ListUsers(ctx context.Context) ([]entities.User, error)
-	// DisableUserByID disables the user and deletes their sessions atomically;
+	// ListUsers returns up to limit users after the given ID, without credentials, oldest first;
+	// the zero ID starts at the first user.
+	ListUsers(ctx context.Context, after values.UserID, limit int) ([]entities.User, error)
+	// DisableUserByID disables the user, demotes them to user and deletes their sessions atomically;
 	// [errors.ErrUserNotFound] if missing.
 	DisableUserByID(ctx context.Context, id values.UserID) error
 	// EnableUserByID enables the user; [errors.ErrUserNotFound] if missing.
 	EnableUserByID(ctx context.Context, id values.UserID) error
+	// SetUserRoleByID sets an active user's role;
+	// [errors.ErrUserNotFound] if missing, [errors.ErrUserDisabled] if pending or disabled.
+	SetUserRoleByID(ctx context.Context, id values.UserID, role domainvalues.Role) error
 }
 
 type SessionRepository interface {
