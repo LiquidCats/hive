@@ -54,12 +54,15 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 	}
 	defer conn.Close()
 
+	logger.Info("database connection established")
+
 	err = db.MigrateUp(ctx, conn, migrations.Migrations)
 	if err != nil {
 		logger.Error("failed to migrate database", logs.ErisError(err))
 
 		return
 	}
+	logger.Info("database migrated successfully")
 
 	queries := queries.New(conn)
 	txManager := db.NewTxManager(conn)
@@ -69,6 +72,17 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 
 	auth := app.NewAuth(wn, repo, repo, repo, repo, clock.New(), cfg.Auth.SessionTTL)
 	srv := server.NewServer(auth, app.NewUsers(repo), logger, cfg.Auth.SessionTTL)
+
+	// Rejects cross-origin non-GET browser requests (Sec-Fetch-Site / Origin); SameSite alone lets same-site
+	// origins such as sibling subdomains through. The web app origins are trusted for a cross-origin API URL.
+	csrf := http.NewCrossOriginProtection()
+	for _, origin := range cfg.Auth.RPOrigins {
+		if err = csrf.AddTrustedOrigin(origin); err != nil {
+			logger.Error("failed to trust origin", logs.ErisError(err))
+
+			return
+		}
+	}
 
 	router := echo.New()
 	// Limit first so unauthenticated floods (the public start endpoints write a row each) are throttled too.
@@ -81,7 +95,7 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 	runners := []graceful.Runner{
 		graceful.Signals,
 		graceful.Server(
-			http.MaxBytesHandler(router, maxBodyBytes),
+			csrf.Handler(http.MaxBytesHandler(router, maxBodyBytes)),
 			graceful.WithPort(cfg.Http.Port),
 			graceful.WithReadTimeout(cfg.Http.ReadTimeout),
 			graceful.WithWriteTimeout(cfg.Http.WriteTimeout),

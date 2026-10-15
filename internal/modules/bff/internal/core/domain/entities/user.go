@@ -6,6 +6,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 
 	"github.com/LiquidCats/hive/internal/kernel/values"
+	domainvalues "github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
 )
 
 // User implements [webauthn.User]; the go-webauthn types are this module's passkey vocabulary.
@@ -13,6 +14,7 @@ type User struct {
 	ID          values.UserID
 	Name        values.Username
 	Credentials []webauthn.Credential
+	Role        domainvalues.Role
 	// Disabled is set for users awaiting approval and for disabled ones; neither may sign in.
 	Disabled  bool
 	CreatedAt time.Time

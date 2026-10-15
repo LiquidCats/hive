@@ -32,6 +32,7 @@ type User struct {
 	Name       string
 	CreatedAt  time.Time
 	DisabledAt sql.NullTime
+	Role       string
 }
 
 type UserCredential struct {

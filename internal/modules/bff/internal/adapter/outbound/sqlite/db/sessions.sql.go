@@ -55,7 +55,7 @@ func (q *Queries) DeleteSessionsByUser(ctx context.Context, userID uuid.UUID) er
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-SELECT users.id, users.name, users.created_at, users.disabled_at, sessions.expires_at
+SELECT users.id, users.name, users.created_at, users.disabled_at, users.role, sessions.expires_at
 FROM sessions JOIN users ON users.id = sessions.user_id
 WHERE token_hash = ?
 `
@@ -73,6 +73,7 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash string) (GetSess
 		&i.User.Name,
 		&i.User.CreatedAt,
 		&i.User.DisabledAt,
+		&i.User.Role,
 		&i.ExpiresAt,
 	)
 	return i, err

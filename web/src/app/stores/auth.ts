@@ -3,9 +3,13 @@ import { ref } from 'vue'
 
 import { ApiError, fetchJSON } from '@/shared/composables/usePasskey'
 
+// owner manages users, admin reads and writes, user only reads.
+export type Role = 'owner' | 'admin' | 'user'
+
 export interface SessionUser {
   id: string
   username: string
+  role: Role
 }
 
 export const useAuthStore = defineStore('auth', () => {

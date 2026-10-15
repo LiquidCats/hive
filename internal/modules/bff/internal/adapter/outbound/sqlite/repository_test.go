@@ -95,7 +95,7 @@ func (s *RepositorySuite) TestListUsers() {
 	alice := s.createUser("alice")
 	bob := s.createUser("bob")
 
-	users, err := s.repo.ListUsers(s.T().Context())
+	users, err := s.repo.ListUsers(s.T().Context(), uuid.UUID{}, 10)
 
 	s.Require().NoError(err)
 	s.Require().Len(users, 2)
@@ -246,7 +246,7 @@ func (s *RepositorySuite) TestClosedConnection() {
 			return err
 		},
 		"ListUsers": func(ctx context.Context) error {
-			_, err := s.repo.ListUsers(ctx)
+			_, err := s.repo.ListUsers(ctx, uuid.UUID{}, 10)
 			return err
 		},
 		"EnableUserByID":  func(ctx context.Context) error { return s.repo.EnableUserByID(ctx, id) },
