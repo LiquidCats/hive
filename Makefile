@@ -25,6 +25,20 @@ generate-sql: ## Generate sqlc code
 		-w "/src" \
 		"$(SQLC_IMAGE)" generate; \
 
+generate-mocks: ## Generate mockery mocks
+	$(CONTAINER_RUNTIME) run --rm \
+		-v "$(ROOT_DIR):/src" \
+		-w "/src" \
+		-e GOTOOLCHAIN=auto \
+		"$(MOCKERY_IMAGE)"
+
+lint: ## Lint Go code
+	$(CONTAINER_RUNTIME) run --rm \
+		-v "$(ROOT_DIR):/src" \
+		-w "/src" \
+		-e GOTOOLCHAIN=auto \
+		"$(GOLANGCI_LINT_IMAGE)" golangci-lint run ./...
+
 proto-lint: ## Lint protobuf definitions
 	$(CONTAINER_RUNTIME) run --rm \
 		-v "$(ROOT_DIR):/defs" \

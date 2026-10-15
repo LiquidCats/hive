@@ -8,24 +8,19 @@ require-template-schema-exists: true
 template: testify
 template-schema: "{{.Template}}.schema.json"
 packages:
-  github.com/LiquidCats/paw/internal/kernel/ports:
+  github.com/LiquidCats/hive/internal/kernel/ports:
     config:
       pkgname: kernelmocks
       dir: "tests/mocks/kernelmocks"
       recursive: true
       all: true
 
-  github.com/LiquidCats/paw/internal/modules/secret-manager:
+  github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/ports:
     config:
       pkgname: mocks
-      dir: "tests/secretmanager/mocks"
-      recursive: true
-      all: true
-
-  # github.com/redis/go-redis/v9:
-  #   interfaces:
-  #     Cmdable:
-  #     UniversalClient:
-  #   config:
-  #     pkgname: redismocks
-  #     dir: "tests/mocks/redismocks"
+      dir: "internal/modules/bff/tests/mocks"
+    interfaces:
+      UserRepository:
+      SessionRepository:
+      CredentialRepository:
+      CeremonyRepository:

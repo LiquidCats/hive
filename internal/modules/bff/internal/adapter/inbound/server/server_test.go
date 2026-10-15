@@ -257,6 +257,19 @@ func (s *AuthSuite) TestRoutesRequireSession() {
 	s.Equal(http.StatusUnauthorized, rec.Code)
 }
 
+func (s *AuthSuite) TestMalformedBodies() {
+	for _, path := range []string{"/webauthn/register/start", "/webauthn/register/finish", "/webauthn/login/finish"} {
+		req := httptest.NewRequestWithContext(s.T().Context(), http.MethodPost, path, bytes.NewBufferString("{"))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		s.router.ServeHTTP(rec, req)
+
+		s.Equal(http.StatusBadRequest, rec.Code, path)
+		s.JSONEq(`"bad_request"`, mustJSON(s.T(), rec, "code"), path)
+	}
+}
+
 // register signs up with a user-verifying passkey; the response says whether the user is active.
 func (s *AuthSuite) register(username string) (*authenticator, *httptest.ResponseRecorder) {
 	key, challenge := s.startRegistration(username)
