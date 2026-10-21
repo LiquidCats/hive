@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"slices"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/LiquidCats/hive/internal/kernel/ports"
 	"github.com/LiquidCats/hive/internal/modules/bff/configs"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/inbound/server"
+	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/git"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite"
 	queries "github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/db"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/migrations"
@@ -46,6 +48,20 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 		return
 	}
 
+	key, err := base64.StdEncoding.DecodeString(cfg.DB.EncryptionKey)
+	if err != nil {
+		logger.Error("failed to decode DB_ENCRYPTION_KEY", logs.ErisError(err))
+
+		return
+	}
+
+	aead, err := sqlite.NewCipher(key)
+	if err != nil {
+		logger.Error("invalid DB_ENCRYPTION_KEY", logs.ErisError(err))
+
+		return
+	}
+
 	conn, err := db.Connect(ctx, db.WithDatabase(cfg.DB.Path))
 	if err != nil {
 		logger.Error("failed to connect to database", logs.ErisError(err))
@@ -68,10 +84,10 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 	txManager := db.NewTxManager(conn)
 	queriesTxManager := db.NewQueriesTxManager(txManager, queries)
 
-	repo := sqlite.NewRepository(queriesTxManager)
+	repo := sqlite.NewRepository(queriesTxManager, aead)
 
 	auth := app.NewAuth(wn, repo, repo, repo, repo, clock.New(), cfg.Auth.SessionTTL)
-	srv := server.NewServer(auth, app.NewUsers(repo), logger, cfg.Auth.SessionTTL)
+	srv := server.NewServer(auth, app.NewUsers(repo), app.NewRepos(repo, git.Remote{}), logger, cfg.Auth.SessionTTL)
 
 	// Rejects cross-origin non-GET browser requests (Sec-Fetch-Site / Origin); SameSite alone lets same-site
 	// origins such as sibling subdomains through. The web app origins are trusted for a cross-origin API URL.

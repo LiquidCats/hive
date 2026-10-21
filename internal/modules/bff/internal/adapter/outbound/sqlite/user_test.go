@@ -169,7 +169,7 @@ func TestMigrationRoles_BackfillsOwner(t *testing.T) {
 
 	require.NoError(t, db.MigrateUp(ctx, conn, migrations.Migrations))
 
-	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)))
+	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)), testCipher(t))
 	roles := map[kernelvalues.Username]values.Role{}
 
 	users, err := repo.ListUsers(ctx, uuid.UUID{}, 10)
@@ -208,13 +208,9 @@ func TestDisableUserByID_Demotes(t *testing.T) {
 func newRepo(t *testing.T) *sqlite.Repository {
 	t.Helper()
 
-	// :memory: is per connection; Connect defaults to a single one.
-	conn, err := db.Connect(t.Context(), db.WithDatabase(":memory:"))
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
-	require.NoError(t, db.MigrateUp(t.Context(), conn, migrations.Migrations))
+	repo, _ := newRepoConn(t)
 
-	return sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)))
+	return repo
 }
 
 func mustCreateUser(t *testing.T, repo *sqlite.Repository, name kernelvalues.Username) *entities.User {

@@ -26,6 +26,7 @@ import (
 	app "github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/usecase"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/entities"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
+	"github.com/LiquidCats/hive/internal/modules/bff/tests/mocks"
 	db "github.com/LiquidCats/libraries/db/v2/sqlite"
 )
 
@@ -36,6 +37,7 @@ const writePath = "/things"
 type hive struct {
 	router *echo.Echo
 	repo   *sqlite.Repository
+	remote *mocks.MockGitRemote
 	ids    map[string]kernelvalues.UserID
 }
 
@@ -206,13 +208,15 @@ func newHive(t *testing.T) *hive {
 	t.Cleanup(func() { _ = conn.Close() })
 	require.NoError(t, db.MigrateUp(ctx, conn, migrations.Migrations))
 
-	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)))
+	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)), testCipher(t))
 	clock := &fakeClock{now: time.Now()}
+	remote := mocks.NewMockGitRemote(t)
 
 	// Sessions are inserted directly, so no WebAuthn ceremony runs and Auth needs no *webauthn.WebAuthn.
 	srv := server.NewServer(
 		app.NewAuth(nil, repo, repo, repo, repo, clock, sessionTTL),
 		app.NewUsers(repo),
+		app.NewRepos(repo, remote),
 		slog.New(slog.DiscardHandler),
 		sessionTTL,
 	)
@@ -222,7 +226,7 @@ func newHive(t *testing.T) *hive {
 	server.RegisterHandlers(router, srv)
 	router.POST(writePath, func(ctx *echo.Context) error { return ctx.NoContent(http.StatusNoContent) })
 
-	h := &hive{router: router, repo: repo, ids: map[string]kernelvalues.UserID{}}
+	h := &hive{router: router, repo: repo, remote: remote, ids: map[string]kernelvalues.UserID{}}
 
 	// Created in this order, the first one is the owner and the rest are pending users.
 	for _, name := range []string{"owner", "admin", "user", "pending"} {

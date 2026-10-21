@@ -44,7 +44,7 @@ func (s *RepositorySuite) SetupTest() {
 
 	s.conn = conn
 	s.queries = queries.New(conn)
-	s.repo = sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), s.queries))
+	s.repo = sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), s.queries), testCipher(s.T()))
 }
 
 func (s *RepositorySuite) TestCreateUser_FirstActiveLaterDisabled() {

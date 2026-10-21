@@ -76,8 +76,8 @@ func (s *UsersSuite) TestListUsers_Pages() {
 	}{
 		{name: "empty", stored: 0, wantLen: 0},
 		{name: "partial page", stored: 3, wantLen: 3},
-		{name: "exactly one page", stored: app.UsersPageSize, wantLen: app.UsersPageSize},
-		{name: "more pages", stored: app.UsersPageSize + 1, wantLen: app.UsersPageSize, wantNext: true},
+		{name: "exactly one page", stored: app.PageSize, wantLen: app.PageSize},
+		{name: "more pages", stored: app.PageSize + 1, wantLen: app.PageSize, wantNext: true},
 	}
 
 	for _, tt := range tests {
@@ -91,7 +91,7 @@ func (s *UsersSuite) TestListUsers_Pages() {
 			}
 
 			// Asks for one extra row to learn whether a next page exists.
-			s.repo.EXPECT().ListUsers(mock.Anything, after, app.UsersPageSize+1).Return(stored, nil).Once()
+			s.repo.EXPECT().ListUsers(mock.Anything, after, app.PageSize+1).Return(stored, nil).Once()
 
 			got, next, err := s.users.ListUsers(s.T().Context(), s.owner, after)
 
@@ -108,7 +108,7 @@ func (s *UsersSuite) TestListUsers_Pages() {
 }
 
 func (s *UsersSuite) TestListUsers_Error() {
-	s.repo.EXPECT().ListUsers(mock.Anything, uuid.UUID{}, app.UsersPageSize+1).Return(nil, errBoom).Once()
+	s.repo.EXPECT().ListUsers(mock.Anything, uuid.UUID{}, app.PageSize+1).Return(nil, errBoom).Once()
 
 	_, _, err := s.users.ListUsers(s.T().Context(), s.owner, uuid.UUID{})
 

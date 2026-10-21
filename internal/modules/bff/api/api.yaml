@@ -10,11 +10,13 @@ tags:
     description: Session
   - name: users
     description: User management
+  - name: repositories
+    description: Git repositories the system deploys from
 
 # Every operation requires a session unless it sets `security: []`;
 # the server enforces the same public list (server.publicPaths).
 # Roles, 403 otherwise: GET is open to every role, other methods need admin (server.RequireSession);
-# /users operations need the owner (Users use case).
+# /users operations need the owner (Users use case); the Repos use case repeats the role checks.
 security:
   - cookieAuth: []
 
@@ -102,12 +104,7 @@ paths:
       operationId: ListUsers
       description: Owner only.
       parameters:
-        - name: cursor
-          in: query
-          required: false
-          description: nextCursor of the previous page; omit for the first page.
-          schema:
-            type: string
+        - $ref: "#/components/parameters/Cursor"
       responses:
         "200":
           $ref: "#/components/responses/Users"
@@ -157,6 +154,68 @@ paths:
           $ref: "#/components/responses/Empty"
         default:
           $ref: "#/components/responses/Error"
+  /repositories:
+    get:
+      tags: [repositories]
+      operationId: ListRepositories
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          $ref: "#/components/responses/Repositories"
+        default:
+          $ref: "#/components/responses/Error"
+    post:
+      tags: [repositories]
+      operationId: CreateRepository
+      description: |
+        Admin. Connects to the repository with the credentials first;
+        400 repo_access_denied or repo_unreachable if that fails, 409 if the URL is taken.
+      requestBody:
+        $ref: "#/components/requestBodies/RepositoryInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/Repository"
+        default:
+          $ref: "#/components/responses/Error"
+  /repositories/{id}:
+    get:
+      tags: [repositories]
+      operationId: GetRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryID"
+      responses:
+        "200":
+          $ref: "#/components/responses/Repository"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      tags: [repositories]
+      operationId: UpdateRepository
+      description: |
+        Admin. Replaces the repository and checks the connection like create.
+        An omitted password or sshPrivateKey keeps the stored one, "" clears it;
+        changing the URL requires sending the secrets again (400 repo_credentials_required).
+      parameters:
+        - $ref: "#/components/parameters/RepositoryID"
+      requestBody:
+        $ref: "#/components/requestBodies/RepositoryInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/Repository"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      tags: [repositories]
+      operationId: DeleteRepository
+      description: Admin.
+      parameters:
+        - $ref: "#/components/parameters/RepositoryID"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     # Opaque random token set HttpOnly by register/login finish; the server stores only its hash.
@@ -172,6 +231,20 @@ components:
       schema:
         type: string
         description: UUID
+    RepositoryID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: UUID
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: nextCursor of the previous page; omit for the first page.
+      schema:
+        type: string
   schemas:
     Error:
       type: object
@@ -257,6 +330,77 @@ components:
         nextCursor:
           type: string
           description: Pass as `cursor` for the next page; absent on the last page.
+    Repository:
+      type: object
+      description: Secrets are never returned; hasPassword and hasSshPrivateKey tell whether they are set.
+      required:
+        - id
+        - name
+        - url
+        - username
+        - insecure
+        - hasPassword
+        - hasSshPrivateKey
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        username:
+          type: string
+        insecure:
+          type: boolean
+        hasPassword:
+          type: boolean
+        hasSshPrivateKey:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RepositoryInput:
+      type: object
+      description: |
+        The URL decides the auth: https://host/path takes an optional username and password (or token),
+        ssh://[user@]host[:port]/path or user@host:path takes an SSH private key. URLs carry no credentials.
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        name:
+          type: string
+          maxLength: 255
+        username:
+          type: string
+        password:
+          type: string
+          description: Password or token; omit on update to keep the stored one, "" to clear it.
+        sshPrivateKey:
+          type: string
+          description: Unencrypted PEM/OpenSSH private key; omit on update to keep the stored one, "" to clear it.
+        insecure:
+          type: boolean
+          description: Skip TLS verification (https) or host key verification (ssh).
+    RepositoriesPage:
+      type: object
+      required:
+        - repositories
+      properties:
+        repositories:
+          type: array
+          items:
+            $ref: "#/components/schemas/Repository"
+        nextCursor:
+          type: string
+          description: Pass as `cursor` for the next page; absent on the last page.
     # Opaque on purpose: the WebAuthn JSON shapes are defined by the W3C spec
     # and parsed by go-webauthn, not by this API.
     WebauthnChallenge:
@@ -284,6 +428,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/WebauthnAssertion"
+    RepositoryInput:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RepositoryInput"
   responses:
     Empty:
       description: Success
@@ -311,6 +461,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/UsersPage"
+    Repository:
+      description: Repository
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Repository"
+    Repositories:
+      description: Up to 10 repositories, oldest first
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RepositoriesPage"
     Error:
       description: Error
       content:

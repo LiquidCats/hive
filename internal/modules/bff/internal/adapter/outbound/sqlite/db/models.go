@@ -20,6 +20,18 @@ type Ceremony struct {
 	CreatedAt time.Time
 }
 
+type Repository struct {
+	ID            uuid.UUID
+	Name          string
+	Url           string
+	Username      string
+	Password      string
+	SshPrivateKey string
+	Insecure      bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
 type Session struct {
 	TokenHash string
 	UserID    uuid.UUID

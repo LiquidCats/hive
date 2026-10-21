@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"uuid"
 
 	"github.com/rotisserie/eris"
 
@@ -14,8 +15,8 @@ import (
 
 var _ ports.Users = (*Users)(nil)
 
-// UsersPageSize is the most users ListUsers returns at once.
-const UsersPageSize = 10
+// PageSize is the most items a list returns at once.
+const PageSize = 10
 
 type Users struct {
 	userRepo ports.UserRepository
@@ -35,19 +36,14 @@ func (u *Users) ListUsers(
 		return nil, kernelvalues.UserID{}, err
 	}
 
-	// One extra row tells whether another page follows.
-	users, err := u.userRepo.ListUsers(ctx, after, UsersPageSize+1)
+	users, err := u.userRepo.ListUsers(ctx, after, PageSize+1)
 	if err != nil {
 		return nil, kernelvalues.UserID{}, eris.Wrap(err, "list users")
 	}
 
-	if len(users) <= UsersPageSize {
-		return users, kernelvalues.UserID{}, nil
-	}
+	users, next := nextPage(users, func(user entities.User) kernelvalues.UserID { return user.ID })
 
-	users = users[:UsersPageSize]
-
-	return users, users[UsersPageSize-1].ID, nil
+	return users, next, nil
 }
 
 // EnableUser implements [ports.Users].
@@ -100,4 +96,16 @@ func authorize(actor *entities.User) error {
 	}
 
 	return nil
+}
+
+// nextPage trims items, fetched as PageSize+1 so the extra one tells whether another page follows,
+// and returns the cursor for the next page; zero on the last page.
+func nextPage[T any](items []T, id func(T) uuid.UUID) ([]T, uuid.UUID) {
+	if len(items) <= PageSize {
+		return items, uuid.UUID{}
+	}
+
+	items = items[:PageSize]
+
+	return items, id(items[PageSize-1])
 }

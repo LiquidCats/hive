@@ -44,3 +44,22 @@ type Users interface {
 	// [errors.ErrUserDisabled] if pending or disabled.
 	SetRole(ctx context.Context, actor *entities.User, id values.UserID, role domainvalues.Role) error
 }
+
+// Repos is the inbound port: git repositories the system deploys from. Every signed-in user may read;
+// writes need an admin. Methods return [errors.ErrForbidden] otherwise, before any lookup.
+type Repos interface {
+	// ListRepos returns a page of repositories after the given ID (zero for the first page), oldest first,
+	// and the ID to pass for the next page; zero on the last page.
+	ListRepos(ctx context.Context, actor *entities.User, after values.RepoID) ([]entities.Repo, values.RepoID, error)
+	// GetRepo returns the repository; [errors.ErrRepoNotFound] if missing.
+	GetRepo(ctx context.Context, actor *entities.User, id values.RepoID) (*entities.Repo, error)
+	// CreateRepo validates the input, checks the remote is reachable with the credentials and stores it.
+	// Errors: validation ([errors.ErrInvalidRepoURL], [errors.ErrInvalidRepoName], [errors.ErrInvalidRepoCredentials]),
+	// [GitRemote] check errors, [errors.ErrRepoURLTaken].
+	CreateRepo(ctx context.Context, actor *entities.User, in entities.RepoInput) (*entities.Repo, error)
+	// UpdateRepo replaces the repository, keeping secrets the input omits; same errors as CreateRepo plus
+	// [errors.ErrRepoNotFound] and [errors.ErrRepoCredentialsRequired].
+	UpdateRepo(ctx context.Context, actor *entities.User, id values.RepoID, in entities.RepoInput) (*entities.Repo, error)
+	// DeleteRepo deletes the repository; [errors.ErrRepoNotFound] if missing.
+	DeleteRepo(ctx context.Context, actor *entities.User, id values.RepoID) error
+}
