@@ -306,6 +306,80 @@ func (_c *MockRepoRepository_ListRepos_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// ListReposBefore provides a mock function for the type MockRepoRepository
+func (_mock *MockRepoRepository) ListReposBefore(ctx context.Context, before values.RepoID, limit int) ([]entities.Repo, error) {
+	ret := _mock.Called(ctx, before, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListReposBefore")
+	}
+
+	var r0 []entities.Repo
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, values.RepoID, int) ([]entities.Repo, error)); ok {
+		return returnFunc(ctx, before, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, values.RepoID, int) []entities.Repo); ok {
+		r0 = returnFunc(ctx, before, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]entities.Repo)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, values.RepoID, int) error); ok {
+		r1 = returnFunc(ctx, before, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockRepoRepository_ListReposBefore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListReposBefore'
+type MockRepoRepository_ListReposBefore_Call struct {
+	*mock.Call
+}
+
+// ListReposBefore is a helper method to define mock.On call
+//   - ctx context.Context
+//   - before values.RepoID
+//   - limit int
+func (_e *MockRepoRepository_Expecter) ListReposBefore(ctx any, before any, limit any) *MockRepoRepository_ListReposBefore_Call {
+	return &MockRepoRepository_ListReposBefore_Call{Call: _e.mock.On("ListReposBefore", ctx, before, limit)}
+}
+
+func (_c *MockRepoRepository_ListReposBefore_Call) Run(run func(ctx context.Context, before values.RepoID, limit int)) *MockRepoRepository_ListReposBefore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 values.RepoID
+		if args[1] != nil {
+			arg1 = args[1].(values.RepoID)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockRepoRepository_ListReposBefore_Call) Return(repos []entities.Repo, err error) *MockRepoRepository_ListReposBefore_Call {
+	_c.Call.Return(repos, err)
+	return _c
+}
+
+func (_c *MockRepoRepository_ListReposBefore_Call) RunAndReturn(run func(ctx context.Context, before values.RepoID, limit int) ([]entities.Repo, error)) *MockRepoRepository_ListReposBefore_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateRepo provides a mock function for the type MockRepoRepository
 func (_mock *MockRepoRepository) UpdateRepo(ctx context.Context, repo entities.Repo) (*entities.Repo, error) {
 	ret := _mock.Called(ctx, repo)

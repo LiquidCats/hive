@@ -242,7 +242,7 @@ components:
       name: cursor
       in: query
       required: false
-      description: nextCursor of the previous page; omit for the first page.
+      description: nextCursor or previousCursor of a page; omit for the first page.
       schema:
         type: string
   schemas:
@@ -330,6 +330,9 @@ components:
         nextCursor:
           type: string
           description: Pass as `cursor` for the next page; absent on the last page.
+        previousCursor:
+          type: string
+          description: Pass as `cursor` for the previous page; absent on the first page.
     Repository:
       type: object
       description: Secrets are never returned; hasPassword and hasSshPrivateKey tell whether they are set.
@@ -401,6 +404,9 @@ components:
         nextCursor:
           type: string
           description: Pass as `cursor` for the next page; absent on the last page.
+        previousCursor:
+          type: string
+          description: Pass as `cursor` for the previous page; absent on the first page.
     # Opaque on purpose: the WebAuthn JSON shapes are defined by the W3C spec
     # and parsed by go-webauthn, not by this API.
     WebauthnChallenge:

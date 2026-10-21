@@ -25,6 +25,8 @@ type UserRepository interface {
 	// ListUsers returns up to limit users after the given ID, without credentials, oldest first;
 	// the zero ID starts at the first user.
 	ListUsers(ctx context.Context, after values.UserID, limit int) ([]entities.User, error)
+	// ListUsersBefore returns up to limit users right before the given ID, without credentials, oldest first.
+	ListUsersBefore(ctx context.Context, before values.UserID, limit int) ([]entities.User, error)
 	// DisableUserByID disables the user, demotes them to user and deletes their sessions atomically;
 	// [errors.ErrUserNotFound] if missing.
 	DisableUserByID(ctx context.Context, id values.UserID) error
@@ -68,6 +70,8 @@ type RepoRepository interface {
 	// ListRepos returns up to limit repositories after the given ID, oldest first;
 	// the zero ID starts at the first one.
 	ListRepos(ctx context.Context, after values.RepoID, limit int) ([]entities.Repo, error)
+	// ListReposBefore returns up to limit repositories right before the given ID, oldest first.
+	ListReposBefore(ctx context.Context, before values.RepoID, limit int) ([]entities.Repo, error)
 	// UpdateRepo replaces the stored repository and returns it;
 	// [errors.ErrRepoNotFound] if missing, [errors.ErrRepoURLTaken] on duplicate URL.
 	UpdateRepo(ctx context.Context, repo entities.Repo) (*entities.Repo, error)

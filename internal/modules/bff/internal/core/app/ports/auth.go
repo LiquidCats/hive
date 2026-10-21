@@ -30,9 +30,11 @@ type Auth interface {
 // Users is the inbound port: user management. Every method returns [errors.ErrForbidden]
 // unless actor, the signed-in user, is the owner.
 type Users interface {
-	// ListUsers returns a page of users after the given ID (zero for the first page), oldest first,
-	// and the ID to pass for the next page; zero on the last page.
-	ListUsers(ctx context.Context, actor *entities.User, after values.UserID) ([]entities.User, values.UserID, error)
+	// ListUsers returns the page at the cursor (zero for the first page), oldest first,
+	// and the cursors of the neighbouring pages.
+	ListUsers(
+		ctx context.Context, actor *entities.User, cursor domainvalues.Cursor,
+	) ([]entities.User, domainvalues.Cursors, error)
 	// EnableUser approves a pending user or re-enables a disabled one, as a user;
 	// [errors.ErrUserNotFound] if missing.
 	EnableUser(ctx context.Context, actor *entities.User, id values.UserID) error
@@ -48,9 +50,11 @@ type Users interface {
 // Repos is the inbound port: git repositories the system deploys from. Every signed-in user may read;
 // writes need an admin. Methods return [errors.ErrForbidden] otherwise, before any lookup.
 type Repos interface {
-	// ListRepos returns a page of repositories after the given ID (zero for the first page), oldest first,
-	// and the ID to pass for the next page; zero on the last page.
-	ListRepos(ctx context.Context, actor *entities.User, after values.RepoID) ([]entities.Repo, values.RepoID, error)
+	// ListRepos returns the page at the cursor (zero for the first page), oldest first,
+	// and the cursors of the neighbouring pages.
+	ListRepos(
+		ctx context.Context, actor *entities.User, cursor domainvalues.Cursor,
+	) ([]entities.Repo, domainvalues.Cursors, error)
 	// GetRepo returns the repository; [errors.ErrRepoNotFound] if missing.
 	GetRepo(ctx context.Context, actor *entities.User, id values.RepoID) (*entities.Repo, error)
 	// CreateRepo validates the input, checks the remote is reachable with the credentials and stores it.

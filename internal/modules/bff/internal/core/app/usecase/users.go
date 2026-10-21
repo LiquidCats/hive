@@ -30,20 +30,19 @@ func NewUsers(userRepo ports.UserRepository) *Users {
 func (u *Users) ListUsers(
 	ctx context.Context,
 	actor *entities.User,
-	after kernelvalues.UserID,
-) ([]entities.User, kernelvalues.UserID, error) {
+	cursor values.Cursor,
+) ([]entities.User, values.Cursors, error) {
 	if err := authorize(actor); err != nil {
-		return nil, kernelvalues.UserID{}, err
+		return nil, values.Cursors{}, err
 	}
 
-	users, err := u.userRepo.ListUsers(ctx, after, PageSize+1)
-	if err != nil {
-		return nil, kernelvalues.UserID{}, eris.Wrap(err, "list users")
-	}
+	users, cursors, err := page(
+		ctx, cursor,
+		func(user entities.User) kernelvalues.UserID { return user.ID },
+		u.userRepo.ListUsers, u.userRepo.ListUsersBefore,
+	)
 
-	users, next := nextPage(users, func(user entities.User) kernelvalues.UserID { return user.ID })
-
-	return users, next, nil
+	return users, cursors, eris.Wrap(err, "list users")
 }
 
 // EnableUser implements [ports.Users].
@@ -98,14 +97,51 @@ func authorize(actor *entities.User) error {
 	return nil
 }
 
-// nextPage trims items, fetched as PageSize+1 so the extra one tells whether another page follows,
-// and returns the cursor for the next page; zero on the last page.
-func nextPage[T any](items []T, id func(T) uuid.UUID) ([]T, uuid.UUID) {
-	if len(items) <= PageSize {
-		return items, uuid.UUID{}
+// page loads the page at the cursor, fetching one row more than PageSize to learn whether the page
+// beyond it exists, and returns the cursors of the neighbouring pages.
+// Both cursors point next to an item of this page, so they stay valid if other rows come and go.
+func page[T any](
+	ctx context.Context,
+	cursor values.Cursor,
+	id func(T) uuid.UUID,
+	after, before func(ctx context.Context, id uuid.UUID, limit int) ([]T, error),
+) ([]T, values.Cursors, error) {
+	list := after
+	if cursor.Before {
+		list = before
 	}
 
-	items = items[:PageSize]
+	items, err := list(ctx, cursor.ID, PageSize+1)
+	if err != nil {
+		return nil, values.Cursors{}, err
+	}
 
-	return items, id(items[PageSize-1])
+	more := len(items) > PageSize
+	if more && cursor.Before {
+		items = items[1:] // oldest first: the extra row is the oldest
+	} else if more {
+		items = items[:PageSize]
+	}
+
+	if len(items) == 0 {
+		return items, values.Cursors{}, nil
+	}
+
+	// Going back, the pivot row is still ahead; going forward, it is still behind (unless this is page one).
+	hasPrev, hasNext := cursor.ID != (uuid.UUID{}), more
+	if cursor.Before {
+		hasPrev, hasNext = more, true
+	}
+
+	var cursors values.Cursors
+
+	if hasPrev {
+		cursors.Prev = &values.Cursor{ID: id(items[0]), Before: true}
+	}
+
+	if hasNext {
+		cursors.Next = &values.Cursor{ID: id(items[len(items)-1])}
+	}
+
+	return items, cursors, nil
 }

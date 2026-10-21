@@ -6,7 +6,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
-// /auth/sign-in and /users are also SPA routes: page loads stay with vite, fetches go to the BFF.
+// /auth/sign-in, /users and /repositories are also SPA routes: page loads stay with vite, fetches go to the BFF.
 const bff: ProxyOptions = {
   target: process.env.BFF_URL ?? 'http://localhost:8080',
   changeOrigin: true,
@@ -19,7 +19,9 @@ export default defineConfig({
   // Same-origin BFF in dev: the session cookie is SameSite=Strict and no CORS is needed.
   server: {
     allowedHosts: ['web.hive.orb.local'],
-    proxy: Object.fromEntries(['/webauthn', '/auth', '/users'].map((prefix) => [prefix, bff])),
+    proxy: Object.fromEntries(
+      ['/webauthn', '/auth', '/users', '/repositories'].map((prefix) => [prefix, bff]),
+    ),
   },
   resolve: {
     alias: {

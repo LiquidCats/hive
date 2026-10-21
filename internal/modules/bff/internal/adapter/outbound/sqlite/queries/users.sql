@@ -19,6 +19,10 @@ SELECT * FROM users WHERE id = ?;
 -- name: ListUsers :many
 SELECT * FROM users WHERE id > ? ORDER BY id LIMIT ?;
 
+-- The page before an ID, nearest first: the caller reverses it to oldest first.
+-- name: ListUsersBefore :many
+SELECT * FROM users WHERE id < ? ORDER BY id DESC LIMIT ?;
+
 -- Disabling also demotes, so re-enabling yields a user, never a returning admin.
 -- The owner is never disabled: Users.DisableUser refuses the actor themselves, and only the owner may call it.
 -- name: DisableUserByID :execrows

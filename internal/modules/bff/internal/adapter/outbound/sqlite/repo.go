@@ -82,6 +82,29 @@ func (r *Repository) ListRepos(ctx context.Context, after values.RepoID, limit i
 	return repos, nil
 }
 
+// ListReposBefore implements [ports.RepoRepository].
+func (r *Repository) ListReposBefore(ctx context.Context, before values.RepoID, limit int) ([]entities.Repo, error) {
+	rows, err := r.queryGetter.
+		GetQueries(ctx).
+		ListReposBefore(ctx, db.ListReposBeforeParams{ID: before, Limit: int64(limit)})
+	if err != nil {
+		return nil, eris.Wrap(err, "list repos before")
+	}
+
+	// The query returns nearest first.
+	repos := make([]entities.Repo, len(rows))
+	for i, row := range rows {
+		repo, toErr := r.toRepo(row)
+		if toErr != nil {
+			return nil, toErr
+		}
+
+		repos[len(rows)-1-i] = *repo
+	}
+
+	return repos, nil
+}
+
 // UpdateRepo implements [ports.RepoRepository].
 func (r *Repository) UpdateRepo(ctx context.Context, repo entities.Repo) (*entities.Repo, error) {
 	row, err := r.queryGetter.GetQueries(ctx).UpdateRepo(ctx, db.UpdateRepoParams{

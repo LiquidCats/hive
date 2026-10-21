@@ -42,7 +42,7 @@ func (s *ReposSuite) TestForbidden() {
 	in := entities.RepoInput{URL: "https://h/r"}
 	reads := map[string]func(ctx context.Context, actor *entities.User) error{
 		"ListRepos": func(ctx context.Context, actor *entities.User) error {
-			_, _, err := s.repos.ListRepos(ctx, actor, uuid.UUID{})
+			_, _, err := s.repos.ListRepos(ctx, actor, values.Cursor{})
 
 			return err
 		},
@@ -84,39 +84,62 @@ func (s *ReposSuite) TestForbidden() {
 }
 
 func (s *ReposSuite) TestListRepos_Pages() {
+	pivot := uuid.NewV7()
 	tests := []struct {
 		name     string
-		stored   int
+		cursor   values.Cursor
+		stored   int // rows the store returns, oldest first
 		wantLen  int
 		wantNext bool
+		wantPrev bool
 	}{
-		{name: "empty", stored: 0, wantLen: 0},
-		{name: "exactly one page", stored: app.PageSize, wantLen: app.PageSize},
-		{name: "more pages", stored: app.PageSize + 1, wantLen: app.PageSize, wantNext: true},
+		{name: "first page, empty", stored: 0},
+		{name: "first page, partial", stored: 3, wantLen: 3},
+		{name: "first page, exactly full", stored: app.PageSize, wantLen: app.PageSize},
+		{name: "first page, more follow", stored: app.PageSize + 1, wantLen: app.PageSize, wantNext: true},
+		{name: "after, last page", cursor: values.Cursor{ID: pivot}, stored: 3, wantLen: 3, wantPrev: true},
+		{
+			name: "after, in the middle", cursor: values.Cursor{ID: pivot}, stored: app.PageSize + 1,
+			wantLen: app.PageSize, wantNext: true, wantPrev: true,
+		},
+		{name: "before, first page", cursor: values.Cursor{ID: pivot, Before: true}, stored: 3, wantLen: 3, wantNext: true},
+		{
+			name: "before, in the middle", cursor: values.Cursor{ID: pivot, Before: true}, stored: app.PageSize + 1,
+			wantLen: app.PageSize, wantNext: true, wantPrev: true,
+		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.SetupTest()
 
-			after := uuid.NewV7()
 			stored := make([]entities.Repo, tt.stored)
 			for i := range stored {
 				stored[i] = entities.Repo{ID: uuid.NewV7()}
 			}
 
-			s.store.EXPECT().ListRepos(mock.Anything, after, app.PageSize+1).Return(stored, nil).Once()
+			// Asks for one extra row to learn whether the page beyond exists.
+			if tt.cursor.Before {
+				s.store.EXPECT().ListReposBefore(mock.Anything, pivot, app.PageSize+1).Return(stored, nil).Once()
+			} else {
+				s.store.EXPECT().ListRepos(mock.Anything, tt.cursor.ID, app.PageSize+1).Return(stored, nil).Once()
+			}
 
-			// Readers may list.
-			got, next, err := s.repos.ListRepos(s.T().Context(), s.user, after)
+			got, cursors, err := s.repos.ListRepos(s.T().Context(), s.user, tt.cursor)
 
 			s.Require().NoError(err)
-			s.Len(got, tt.wantLen)
+			s.Require().Len(got, tt.wantLen)
 
 			if tt.wantNext {
-				s.Equal(got[len(got)-1].ID, next)
+				s.Equal(&values.Cursor{ID: got[len(got)-1].ID}, cursors.Next)
 			} else {
-				s.Zero(next)
+				s.Nil(cursors.Next)
+			}
+
+			if tt.wantPrev {
+				s.Equal(&values.Cursor{ID: got[0].ID, Before: true}, cursors.Prev)
+			} else {
+				s.Nil(cursors.Prev)
 			}
 		})
 	}
@@ -125,7 +148,7 @@ func (s *ReposSuite) TestListRepos_Pages() {
 func (s *ReposSuite) TestListRepos_Error() {
 	s.store.EXPECT().ListRepos(mock.Anything, uuid.UUID{}, app.PageSize+1).Return(nil, errBoom).Once()
 
-	_, _, err := s.repos.ListRepos(s.T().Context(), s.user, uuid.UUID{})
+	_, _, err := s.repos.ListRepos(s.T().Context(), s.user, values.Cursor{})
 
 	s.ErrorIs(err, errBoom)
 }

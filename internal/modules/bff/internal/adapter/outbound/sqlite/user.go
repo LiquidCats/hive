@@ -145,6 +145,24 @@ func (r *Repository) ListUsers(ctx context.Context, after values.UserID, limit i
 	return users, nil
 }
 
+// ListUsersBefore implements [ports.UserRepository].
+func (r *Repository) ListUsersBefore(ctx context.Context, before values.UserID, limit int) ([]entities.User, error) {
+	rows, err := r.queryGetter.
+		GetQueries(ctx).
+		ListUsersBefore(ctx, db.ListUsersBeforeParams{ID: before, Limit: int64(limit)})
+	if err != nil {
+		return nil, eris.Wrap(err, "list users before")
+	}
+
+	// The query returns nearest first.
+	users := make([]entities.User, len(rows))
+	for i, row := range rows {
+		users[len(rows)-1-i] = toUser(row)
+	}
+
+	return users, nil
+}
+
 // GetUserByID implements [ports.UserRepository].
 func (r *Repository) GetUserByID(ctx context.Context, id values.UserID) (*entities.User, error) {
 	queries := r.queryGetter.GetQueries(ctx)

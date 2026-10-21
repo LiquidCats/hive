@@ -175,25 +175,18 @@ func (s *Server) Logout(ctx *echo.Context) error {
 
 // ListUsers implements [ServerInterface].
 func (s *Server) ListUsers(ctx *echo.Context, params ListUsersParams) error {
-	var after values.UserID
-
-	if params.Cursor != nil {
-		var err error
-		if after, err = uuid.Parse(*params.Cursor); err != nil {
-			return s.fail(ctx, errBadRequest)
-		}
+	cursor, err := parseCursor(params.Cursor)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
 	}
 
-	users, next, err := s.users.ListUsers(ctx.Request().Context(), currentUser(ctx), after)
+	users, cursors, err := s.users.ListUsers(ctx.Request().Context(), currentUser(ctx), cursor)
 	if err != nil {
 		return s.fail(ctx, err)
 	}
 
 	resp := UsersPage{Users: make([]User, len(users))}
-	if next != (values.UserID{}) {
-		cursor := next.String()
-		resp.NextCursor = &cursor
-	}
+	resp.NextCursor, resp.PreviousCursor = formatCursor(cursors.Next), formatCursor(cursors.Prev)
 
 	for i, user := range users {
 		resp.Users[i] = User{
@@ -262,25 +255,18 @@ func (s *Server) SetUserRole(ctx *echo.Context, id UserID) error {
 
 // ListRepositories implements [ServerInterface].
 func (s *Server) ListRepositories(ctx *echo.Context, params ListRepositoriesParams) error {
-	var after values.RepoID
-
-	if params.Cursor != nil {
-		var err error
-		if after, err = uuid.Parse(*params.Cursor); err != nil {
-			return s.fail(ctx, errBadRequest)
-		}
+	cursor, err := parseCursor(params.Cursor)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
 	}
 
-	repos, next, err := s.repos.ListRepos(ctx.Request().Context(), currentUser(ctx), after)
+	repos, cursors, err := s.repos.ListRepos(ctx.Request().Context(), currentUser(ctx), cursor)
 	if err != nil {
 		return s.fail(ctx, err)
 	}
 
 	resp := RepositoriesPage{Repositories: make([]Repository, len(repos))}
-	if next != (values.RepoID{}) {
-		cursor := next.String()
-		resp.NextCursor = &cursor
-	}
+	resp.NextCursor, resp.PreviousCursor = formatCursor(cursors.Next), formatCursor(cursors.Prev)
 
 	for i, repo := range repos {
 		resp.Repositories[i] = toRepository(repo)
@@ -467,4 +453,23 @@ func (s *Server) fail(ctx *echo.Context, err error) error {
 	}
 
 	return ctx.JSON(status, Error{Code: code, Message: msg})
+}
+
+// parseCursor reads the optional cursor query parameter; absent is the first page.
+func parseCursor(param *string) (domainvalues.Cursor, error) {
+	if param == nil {
+		return domainvalues.Cursor{}, nil
+	}
+
+	return domainvalues.ParseCursor(*param)
+}
+
+func formatCursor(c *domainvalues.Cursor) *string {
+	if c == nil {
+		return nil
+	}
+
+	s := c.String()
+
+	return &s
 }

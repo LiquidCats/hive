@@ -86,6 +86,43 @@ func TestListUsers_Keyset(t *testing.T) {
 	}
 }
 
+func TestListUsersBefore(t *testing.T) {
+	t.Parallel()
+
+	repo := newRepo(t)
+
+	var ids []kernelvalues.UserID
+	for _, name := range []kernelvalues.Username{"carol", "bob", "alice"} {
+		ids = append(ids, mustCreateUser(t, repo, name).ID)
+	}
+
+	tests := []struct {
+		name   string
+		before kernelvalues.UserID
+		want   []kernelvalues.UserID
+	}{
+		{name: "nearest rows, oldest first", before: ids[2], want: ids[:2]},
+		{name: "short page", before: ids[1], want: ids[:1]},
+		{name: "nothing before the first", before: ids[0], want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel() // read only
+
+			users, err := repo.ListUsersBefore(t.Context(), tt.before, 2)
+			require.NoError(t, err)
+
+			var got []kernelvalues.UserID
+			for _, user := range users {
+				got = append(got, user.ID)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSetUserRoleByID(t *testing.T) {
 	t.Parallel()
 

@@ -10,6 +10,10 @@ SELECT * FROM repositories WHERE id = ?;
 -- name: ListRepos :many
 SELECT * FROM repositories WHERE id > ? ORDER BY id LIMIT ?;
 
+-- The page before an ID, nearest first: the caller reverses it to oldest first.
+-- name: ListReposBefore :many
+SELECT * FROM repositories WHERE id < ? ORDER BY id DESC LIMIT ?;
+
 -- name: UpdateRepo :one
 UPDATE repositories
 SET name = ?, url = ?, username = ?, password = ?, ssh_private_key = ?, insecure = ?, updated_at = CURRENT_TIMESTAMP

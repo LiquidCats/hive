@@ -185,12 +185,18 @@ func TestListRepositories_Pagination(t *testing.T) {
 	require.Len(t, page.Repositories, 10)
 	require.NotNil(t, page.NextCursor)
 	assert.Equal(t, "https://git.test/r00", page.Repositories[0].Url)
-	assert.Equal(t, page.Repositories[9].Id, *page.NextCursor)
+	assert.Equal(t, "after:"+page.Repositories[9].Id, *page.NextCursor)
+	assert.Nil(t, page.PreviousCursor)
 
 	last := h.reposPage(t, "/repositories?cursor="+*page.NextCursor)
 	require.Len(t, last.Repositories, 2)
 	assert.Nil(t, last.NextCursor)
 	assert.Equal(t, "https://git.test/r11", last.Repositories[1].Url)
+	require.NotNil(t, last.PreviousCursor)
+	assert.Equal(t, "before:"+last.Repositories[0].Id, *last.PreviousCursor)
+
+	back := h.reposPage(t, "/repositories?cursor="+*last.PreviousCursor)
+	assert.Equal(t, page, back)
 
 	rec := h.do(t, "user", http.MethodGet, "/repositories?cursor=not-a-uuid", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)

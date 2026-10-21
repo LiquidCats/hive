@@ -28,20 +28,19 @@ func NewRepos(store ports.RepoRepository, remote ports.GitRemote) *Repos {
 func (r *Repos) ListRepos(
 	ctx context.Context,
 	actor *entities.User,
-	after kernelvalues.RepoID,
-) ([]entities.Repo, kernelvalues.RepoID, error) {
+	cursor values.Cursor,
+) ([]entities.Repo, values.Cursors, error) {
 	if err := authorizeRepos(actor, false); err != nil {
-		return nil, kernelvalues.RepoID{}, err
+		return nil, values.Cursors{}, err
 	}
 
-	repos, err := r.store.ListRepos(ctx, after, PageSize+1)
-	if err != nil {
-		return nil, kernelvalues.RepoID{}, eris.Wrap(err, "list repos")
-	}
+	repos, cursors, err := page(
+		ctx, cursor,
+		func(repo entities.Repo) kernelvalues.RepoID { return repo.ID },
+		r.store.ListRepos, r.store.ListReposBefore,
+	)
 
-	repos, next := nextPage(repos, func(repo entities.Repo) kernelvalues.RepoID { return repo.ID })
-
-	return repos, next, nil
+	return repos, cursors, eris.Wrap(err, "list repos")
 }
 
 // GetRepo implements [ports.Repos].

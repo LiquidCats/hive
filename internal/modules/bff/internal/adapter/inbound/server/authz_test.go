@@ -174,12 +174,18 @@ func TestListUsers_Pagination(t *testing.T) {
 	require.Len(t, page.Users, 10)
 	require.NotNil(t, page.NextCursor)
 	assert.Equal(t, "owner", page.Users[0].Username)
-	assert.Equal(t, page.Users[9].Id, *page.NextCursor)
+	assert.Equal(t, "after:"+page.Users[9].Id, *page.NextCursor)
+	assert.Nil(t, page.PreviousCursor)
 
 	last := h.usersPage(t, "/users?cursor="+*page.NextCursor)
 	require.Len(t, last.Users, 3)
 	assert.Nil(t, last.NextCursor)
 	assert.Equal(t, "extra8", last.Users[2].Username)
+	require.NotNil(t, last.PreviousCursor)
+	assert.Equal(t, "before:"+last.Users[0].Id, *last.PreviousCursor)
+
+	back := h.usersPage(t, "/users?cursor="+*last.PreviousCursor)
+	assert.Equal(t, page, back)
 
 	rec := h.do(t, "owner", http.MethodGet, "/users?cursor=not-a-uuid", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)

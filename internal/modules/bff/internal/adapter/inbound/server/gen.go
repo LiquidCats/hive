@@ -68,8 +68,11 @@ type RegistrationResultStatus string
 // RepositoriesPage defines model for RepositoriesPage.
 type RepositoriesPage struct {
 	// NextCursor Pass as `cursor` for the next page; absent on the last page.
-	NextCursor   *string      `json:"nextCursor,omitempty"`
-	Repositories []Repository `json:"repositories"`
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PreviousCursor Pass as `cursor` for the previous page; absent on the first page.
+	PreviousCursor *string      `json:"previousCursor,omitempty"`
+	Repositories   []Repository `json:"repositories"`
 }
 
 // Repository Secrets are never returned; hasPassword and hasSshPrivateKey tell whether they are set.
@@ -142,7 +145,10 @@ type UsernameRequest struct {
 type UsersPage struct {
 	// NextCursor Pass as `cursor` for the next page; absent on the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
-	Users      []User  `json:"users"`
+
+	// PreviousCursor Pass as `cursor` for the previous page; absent on the first page.
+	PreviousCursor *string `json:"previousCursor,omitempty"`
+	Users          []User  `json:"users"`
 }
 
 // WebauthnAssertion defines model for WebauthnAssertion.
@@ -177,13 +183,13 @@ type Username = UsernameRequest
 
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
-	// Cursor nextCursor of the previous page; omit for the first page.
+	// Cursor nextCursor or previousCursor of a page; omit for the first page.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // ListUsersParams defines parameters for ListUsers.
 type ListUsersParams struct {
-	// Cursor nextCursor of the previous page; omit for the first page.
+	// Cursor nextCursor or previousCursor of a page; omit for the first page.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 

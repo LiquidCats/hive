@@ -128,6 +128,49 @@ func (q *Queries) ListRepos(ctx context.Context, arg ListReposParams) ([]Reposit
 	return items, nil
 }
 
+const listReposBefore = `-- name: ListReposBefore :many
+SELECT id, name, url, username, password, ssh_private_key, insecure, created_at, updated_at FROM repositories WHERE id < ? ORDER BY id DESC LIMIT ?
+`
+
+type ListReposBeforeParams struct {
+	ID    uuid.UUID
+	Limit int64
+}
+
+// The page before an ID, nearest first: the caller reverses it to oldest first.
+func (q *Queries) ListReposBefore(ctx context.Context, arg ListReposBeforeParams) ([]Repository, error) {
+	rows, err := q.db.QueryContext(ctx, listReposBefore, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Repository
+	for rows.Next() {
+		var i Repository
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Url,
+			&i.Username,
+			&i.Password,
+			&i.SshPrivateKey,
+			&i.Insecure,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRepo = `-- name: UpdateRepo :one
 UPDATE repositories
 SET name = ?, url = ?, username = ?, password = ?, ssh_private_key = ?, insecure = ?, updated_at = CURRENT_TIMESTAMP

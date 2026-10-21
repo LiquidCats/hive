@@ -142,6 +142,46 @@ func TestRepo_NotFound(t *testing.T) {
 	require.ErrorIs(t, repo.DeleteRepoByID(ctx, id), domainerrors.ErrRepoNotFound)
 }
 
+func TestListReposBefore(t *testing.T) {
+	t.Parallel()
+
+	repo := newRepo(t)
+
+	var ids []kernelvalues.RepoID
+	for _, url := range []string{"https://h/e", "https://h/d", "https://h/c"} {
+		created, err := repo.CreateRepo(t.Context(), entities.Repo{ID: uuid.NewV7(), URL: url})
+		require.NoError(t, err)
+
+		ids = append(ids, created.ID)
+	}
+
+	tests := []struct {
+		name   string
+		before kernelvalues.RepoID
+		want   []kernelvalues.RepoID
+	}{
+		{name: "nearest rows, oldest first", before: ids[2], want: ids[:2]},
+		{name: "short page", before: ids[1], want: ids[:1]},
+		{name: "nothing before the first", before: ids[0], want: nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel() // read only
+
+			repos, err := repo.ListReposBefore(t.Context(), tt.before, 2)
+			require.NoError(t, err)
+
+			var got []kernelvalues.RepoID
+			for _, r := range repos {
+				got = append(got, r.ID)
+			}
+
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestListRepos_Keyset(t *testing.T) {
 	t.Parallel()
 
