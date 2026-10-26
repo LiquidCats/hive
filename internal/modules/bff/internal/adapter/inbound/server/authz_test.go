@@ -26,6 +26,7 @@ import (
 	app "github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/usecase"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/entities"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/core/domain/values"
+	"github.com/LiquidCats/hive/internal/modules/bff/tests/mocks"
 	db "github.com/LiquidCats/libraries/db/v2/sqlite"
 )
 
@@ -36,6 +37,7 @@ const writePath = "/things"
 type hive struct {
 	router *echo.Echo
 	repo   *sqlite.Repository
+	remote *mocks.MockGitRemote
 	ids    map[string]kernelvalues.UserID
 }
 
@@ -172,12 +174,18 @@ func TestListUsers_Pagination(t *testing.T) {
 	require.Len(t, page.Users, 10)
 	require.NotNil(t, page.NextCursor)
 	assert.Equal(t, "owner", page.Users[0].Username)
-	assert.Equal(t, page.Users[9].Id, *page.NextCursor)
+	assert.Equal(t, "after:"+page.Users[9].Id, *page.NextCursor)
+	assert.Nil(t, page.PreviousCursor)
 
 	last := h.usersPage(t, "/users?cursor="+*page.NextCursor)
 	require.Len(t, last.Users, 3)
 	assert.Nil(t, last.NextCursor)
 	assert.Equal(t, "extra8", last.Users[2].Username)
+	require.NotNil(t, last.PreviousCursor)
+	assert.Equal(t, "before:"+last.Users[0].Id, *last.PreviousCursor)
+
+	back := h.usersPage(t, "/users?cursor="+*last.PreviousCursor)
+	assert.Equal(t, page, back)
 
 	rec := h.do(t, "owner", http.MethodGet, "/users?cursor=not-a-uuid", nil)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -206,13 +214,15 @@ func newHive(t *testing.T) *hive {
 	t.Cleanup(func() { _ = conn.Close() })
 	require.NoError(t, db.MigrateUp(ctx, conn, migrations.Migrations))
 
-	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)))
+	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)), testCipher(t))
 	clock := &fakeClock{now: time.Now()}
+	remote := mocks.NewMockGitRemote(t)
 
 	// Sessions are inserted directly, so no WebAuthn ceremony runs and Auth needs no *webauthn.WebAuthn.
 	srv := server.NewServer(
 		app.NewAuth(nil, repo, repo, repo, repo, clock, sessionTTL),
 		app.NewUsers(repo),
+		app.NewRepos(repo, remote),
 		slog.New(slog.DiscardHandler),
 		sessionTTL,
 	)
@@ -222,7 +232,7 @@ func newHive(t *testing.T) *hive {
 	server.RegisterHandlers(router, srv)
 	router.POST(writePath, func(ctx *echo.Context) error { return ctx.NoContent(http.StatusNoContent) })
 
-	h := &hive{router: router, repo: repo, ids: map[string]kernelvalues.UserID{}}
+	h := &hive{router: router, repo: repo, remote: remote, ids: map[string]kernelvalues.UserID{}}
 
 	// Created in this order, the first one is the owner and the rest are pending users.
 	for _, name := range []string{"owner", "admin", "user", "pending"} {

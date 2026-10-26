@@ -25,26 +25,33 @@ interface User {
 interface UsersPage {
   users: User[]
   nextCursor?: string // absent on the last page
+  previousCursor?: string // absent on the first page
 }
 
 const auth = useAuthStore()
 const users = ref<User[]>([])
 const error = ref<string | null>(null)
-// Cursor of every page visited, so Previous can go back; '' is the first page.
-const cursors = ref([''])
+// Opaque cursors from the server; no cursor is the first page.
+const cursor = ref<string>()
 const nextCursor = ref<string>()
+const previousCursor = ref<string>()
 
 // Runs the action, then reloads the current page from the server.
 async function refresh(action?: () => Promise<unknown>) {
   error.value = null
   try {
     await action?.()
-    const cursor = cursors.value.at(-1)
     const page = await fetchJSON<UsersPage>(
-      cursor ? `/users?cursor=${encodeURIComponent(cursor)}` : '/users',
+      cursor.value ? `/users?cursor=${encodeURIComponent(cursor.value)}` : '/users',
     )
+    // The page emptied out from under the cursor: start over instead of showing a blank page.
+    if (!page.users.length && cursor.value) {
+      cursor.value = undefined
+      return refresh()
+    }
     users.value = page.users
     nextCursor.value = page.nextCursor
+    previousCursor.value = page.previousCursor
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Request failed'
   }
@@ -56,14 +63,8 @@ const setStatus = (user: User, status: 'enable' | 'disable') =>
 const setRole = (user: User, role: Exclude<Role, 'owner'>) =>
   refresh(() => fetchJSON(`/users/${user.id}/role`, { method: 'POST', body: { role } }))
 
-function nextPage() {
-  if (!nextCursor.value) return
-  cursors.value.push(nextCursor.value)
-  refresh()
-}
-
-function previousPage() {
-  cursors.value.pop()
+function goTo(target?: string) {
+  cursor.value = target
   refresh()
 }
 
@@ -112,11 +113,13 @@ refresh()
         </ItemActions>
       </Item>
     </ItemGroup>
-    <div v-if="cursors.length > 1 || nextCursor" class="flex justify-end gap-2">
-      <Button size="sm" variant="outline" :disabled="cursors.length === 1" @click="previousPage">
+    <div v-if="previousCursor || nextCursor" class="flex justify-end gap-2">
+      <Button size="sm" variant="outline" :disabled="!previousCursor" @click="goTo(previousCursor)">
         Previous
       </Button>
-      <Button size="sm" variant="outline" :disabled="!nextCursor" @click="nextPage">Next</Button>
+      <Button size="sm" variant="outline" :disabled="!nextCursor" @click="goTo(nextCursor)">
+        Next
+      </Button>
     </div>
   </div>
 </template>

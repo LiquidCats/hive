@@ -4,14 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json/v2"
-	"errors"
 
 	"uuid"
 
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/rotisserie/eris"
-	sqlite "modernc.org/sqlite"
-	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/LiquidCats/hive/internal/kernel/values"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/db"
@@ -36,8 +33,7 @@ func (r *Repository) CreateUser(ctx context.Context, user entities.User) (*entit
 		})
 		if err != nil {
 			// The name check before the ceremony can race a concurrent registration; the UNIQUE index cannot.
-			var sqliteErr *sqlite.Error
-			if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			if isUniqueViolation(err) {
 				return domainerrors.ErrUsernameTaken
 			}
 
@@ -144,6 +140,24 @@ func (r *Repository) ListUsers(ctx context.Context, after values.UserID, limit i
 	users := make([]entities.User, len(rows))
 	for i, row := range rows {
 		users[i] = toUser(row)
+	}
+
+	return users, nil
+}
+
+// ListUsersBefore implements [ports.UserRepository].
+func (r *Repository) ListUsersBefore(ctx context.Context, before values.UserID, limit int) ([]entities.User, error) {
+	rows, err := r.queryGetter.
+		GetQueries(ctx).
+		ListUsersBefore(ctx, db.ListUsersBeforeParams{ID: before, Limit: int64(limit)})
+	if err != nil {
+		return nil, eris.Wrap(err, "list users before")
+	}
+
+	// The query returns nearest first.
+	users := make([]entities.User, len(rows))
+	for i, row := range rows {
+		users[len(rows)-1-i] = toUser(row)
 	}
 
 	return users, nil

@@ -26,6 +26,7 @@ import (
 	queries "github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/db"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/migrations"
 	app "github.com/LiquidCats/hive/internal/modules/bff/internal/core/app/usecase"
+	"github.com/LiquidCats/hive/internal/modules/bff/tests/mocks"
 	db "github.com/LiquidCats/libraries/db/v2/sqlite"
 )
 
@@ -72,12 +73,13 @@ func (s *AuthSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)))
+	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)), testCipher(s.T()))
 	s.clock = &fakeClock{now: time.Now()}
 
 	srv := server.NewServer(
 		app.NewAuth(wn, repo, repo, repo, repo, s.clock, sessionTTL),
 		app.NewUsers(repo),
+		app.NewRepos(repo, mocks.NewMockGitRemote(s.T())),
 		slog.New(slog.DiscardHandler),
 		sessionTTL,
 	)

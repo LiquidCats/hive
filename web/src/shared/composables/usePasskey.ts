@@ -45,6 +45,8 @@ export function usePasskey() {
     pending.value = true
     error.value = null
     try {
+      // Browsers expose WebAuthn only on https (or localhost); fail before the start call writes a ceremony row.
+      if (!window.isSecureContext) throw new Error('Passkeys need HTTPS: open this page via https://')
       return await fn()
     } catch (e) {
       // user cancelling the browser prompt throws NotAllowedError

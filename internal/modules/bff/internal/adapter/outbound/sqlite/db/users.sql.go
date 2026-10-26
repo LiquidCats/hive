@@ -140,6 +140,45 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const listUsersBefore = `-- name: ListUsersBefore :many
+SELECT id, name, created_at, disabled_at, role FROM users WHERE id < ? ORDER BY id DESC LIMIT ?
+`
+
+type ListUsersBeforeParams struct {
+	ID    uuid.UUID
+	Limit int64
+}
+
+// The page before an ID, nearest first: the caller reverses it to oldest first.
+func (q *Queries) ListUsersBefore(ctx context.Context, arg ListUsersBeforeParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsersBefore, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.DisabledAt,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserRoleByID = `-- name: SetUserRoleByID :execrows
 UPDATE users SET role = ? WHERE id = ? AND disabled_at IS NULL
 `

@@ -22,4 +22,6 @@ type AuthConfig struct {
 
 type DBConfig struct {
 	Path string `default:"hive.db" yaml:"path" envconfig:"PATH"`
+	// EncryptionKey is the base64 32-byte AES-256 key sealing repository secrets at rest.
+	EncryptionKey string `yaml:"encryption_key" envconfig:"ENCRYPTION_KEY"`
 }

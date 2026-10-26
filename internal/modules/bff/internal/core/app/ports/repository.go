@@ -25,6 +25,8 @@ type UserRepository interface {
 	// ListUsers returns up to limit users after the given ID, without credentials, oldest first;
 	// the zero ID starts at the first user.
 	ListUsers(ctx context.Context, after values.UserID, limit int) ([]entities.User, error)
+	// ListUsersBefore returns up to limit users right before the given ID, without credentials, oldest first.
+	ListUsersBefore(ctx context.Context, before values.UserID, limit int) ([]entities.User, error)
 	// DisableUserByID disables the user, demotes them to user and deletes their sessions atomically;
 	// [errors.ErrUserNotFound] if missing.
 	DisableUserByID(ctx context.Context, id values.UserID) error
@@ -58,4 +60,28 @@ type CeremonyRepository interface {
 	// TakeCeremony deletes and returns the ceremony for the challenge, so it can be used once;
 	// [errors.ErrCeremonyNotFound] if missing.
 	TakeCeremony(ctx context.Context, challenge string) (*entities.Ceremony, error)
+}
+
+type RepoRepository interface {
+	// CreateRepo stores the repository and returns it; [errors.ErrRepoURLTaken] on duplicate URL.
+	CreateRepo(ctx context.Context, repo entities.Repo) (*entities.Repo, error)
+	// GetRepoByID returns the repository; [errors.ErrRepoNotFound] if missing.
+	GetRepoByID(ctx context.Context, id values.RepoID) (*entities.Repo, error)
+	// ListRepos returns up to limit repositories after the given ID, oldest first;
+	// the zero ID starts at the first one.
+	ListRepos(ctx context.Context, after values.RepoID, limit int) ([]entities.Repo, error)
+	// ListReposBefore returns up to limit repositories right before the given ID, oldest first.
+	ListReposBefore(ctx context.Context, before values.RepoID, limit int) ([]entities.Repo, error)
+	// UpdateRepo replaces the stored repository and returns it;
+	// [errors.ErrRepoNotFound] if missing, [errors.ErrRepoURLTaken] on duplicate URL.
+	UpdateRepo(ctx context.Context, repo entities.Repo) (*entities.Repo, error)
+	// DeleteRepoByID deletes the repository; [errors.ErrRepoNotFound] if missing.
+	DeleteRepoByID(ctx context.Context, id values.RepoID) error
+}
+
+type GitRemote interface {
+	// Check lists the remote's refs with the repository's credentials; an empty repository is reachable.
+	// [errors.ErrRepoAccessDenied] if it is missing or the credentials are rejected,
+	// [errors.ErrInvalidRepoCredentials] if the SSH key does not parse, [errors.ErrRepoUnreachable] otherwise.
+	Check(ctx context.Context, repo entities.Repo) error
 }

@@ -65,6 +65,45 @@ type RegistrationResult struct {
 // RegistrationResultStatus defines model for RegistrationResult.Status.
 type RegistrationResultStatus string
 
+// RepositoriesPage defines model for RepositoriesPage.
+type RepositoriesPage struct {
+	// NextCursor Pass as `cursor` for the next page; absent on the last page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// PreviousCursor Pass as `cursor` for the previous page; absent on the first page.
+	PreviousCursor *string      `json:"previousCursor,omitempty"`
+	Repositories   []Repository `json:"repositories"`
+}
+
+// Repository Secrets are never returned; hasPassword and hasSshPrivateKey tell whether they are set.
+type Repository struct {
+	CreatedAt        time.Time `json:"createdAt"`
+	HasPassword      bool      `json:"hasPassword"`
+	HasSshPrivateKey bool      `json:"hasSshPrivateKey"`
+	Id               string    `json:"id"`
+	Insecure         bool      `json:"insecure"`
+	Name             string    `json:"name"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	Url              string    `json:"url"`
+	Username         string    `json:"username"`
+}
+
+// RepositoryInput The URL decides the auth: https://host/path takes an optional username and password (or token),
+// ssh://[user@]host[:port]/path or user@host:path takes an SSH private key. URLs carry no credentials.
+type RepositoryInput struct {
+	// Insecure Skip TLS verification (https) or host key verification (ssh).
+	Insecure *bool   `json:"insecure,omitempty"`
+	Name     *string `json:"name,omitempty"`
+
+	// Password Password or token; omit on update to keep the stored one, "" to clear it.
+	Password *string `json:"password,omitempty"`
+
+	// SshPrivateKey Unencrypted PEM/OpenSSH private key; omit on update to keep the stored one, "" to clear it.
+	SshPrivateKey *string `json:"sshPrivateKey,omitempty"`
+	Url           string  `json:"url"`
+	Username      *string `json:"username,omitempty"`
+}
+
 // Role owner manages users, admin reads and writes, user only reads.
 type Role string
 
@@ -106,7 +145,10 @@ type UsernameRequest struct {
 type UsersPage struct {
 	// NextCursor Pass as `cursor` for the next page; absent on the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
-	Users      []User  `json:"users"`
+
+	// PreviousCursor Pass as `cursor` for the previous page; absent on the first page.
+	PreviousCursor *string `json:"previousCursor,omitempty"`
+	Users          []User  `json:"users"`
 }
 
 // WebauthnAssertion defines model for WebauthnAssertion.
@@ -118,11 +160,20 @@ type WebauthnAttestation = map[string]interface{}
 // WebauthnChallenge defines model for WebauthnChallenge.
 type WebauthnChallenge = map[string]interface{}
 
+// Cursor defines model for Cursor.
+type Cursor = string
+
+// RepositoryID UUID
+type RepositoryID = string
+
 // UserID UUID
 type UserID = string
 
 // Registration defines model for Registration.
 type Registration = RegistrationResult
+
+// Repositories defines model for Repositories.
+type Repositories = RepositoriesPage
 
 // Users defines model for Users.
 type Users = UsersPage
@@ -130,11 +181,23 @@ type Users = UsersPage
 // Username defines model for Username.
 type Username = UsernameRequest
 
+// ListRepositoriesParams defines parameters for ListRepositories.
+type ListRepositoriesParams struct {
+	// Cursor nextCursor or previousCursor of a page; omit for the first page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListUsersParams defines parameters for ListUsers.
 type ListUsersParams struct {
-	// Cursor nextCursor of the previous page; omit for the first page.
-	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	// Cursor nextCursor or previousCursor of a page; omit for the first page.
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
+type CreateRepositoryJSONRequestBody = RepositoryInput
+
+// UpdateRepositoryJSONRequestBody defines body for UpdateRepository for application/json ContentType.
+type UpdateRepositoryJSONRequestBody = RepositoryInput
 
 // SetUserRoleJSONRequestBody defines body for SetUserRole for application/json ContentType.
 type SetUserRoleJSONRequestBody = RoleRequest
@@ -156,6 +219,21 @@ type ServerInterface interface {
 
 	// (GET /auth/session)
 	GetSession(ctx *echo.Context) error
+
+	// (GET /repositories)
+	ListRepositories(ctx *echo.Context, params ListRepositoriesParams) error
+
+	// (POST /repositories)
+	CreateRepository(ctx *echo.Context) error
+
+	// (DELETE /repositories/{id})
+	DeleteRepository(ctx *echo.Context, id RepositoryID) error
+
+	// (GET /repositories/{id})
+	GetRepository(ctx *echo.Context, id RepositoryID) error
+
+	// (PUT /repositories/{id})
+	UpdateRepository(ctx *echo.Context, id RepositoryID) error
 
 	// (GET /users)
 	ListUsers(ctx *echo.Context, params ListUsersParams) error
@@ -202,6 +280,81 @@ func (w *ServerInterfaceWrapper) GetSession(ctx *echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetSession(ctx)
+	return err
+}
+
+// ListRepositories converts echo context to params.
+func (w *ServerInterfaceWrapper) ListRepositories(ctx *echo.Context) error {
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRepositoriesParams
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", ctx.QueryParams(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter cursor: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListRepositories(ctx, params)
+	return err
+}
+
+// CreateRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) CreateRepository(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.CreateRepository(ctx)
+	return err
+}
+
+// DeleteRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) DeleteRepository(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeleteRepository(ctx, id)
+	return err
+}
+
+// GetRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) GetRepository(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetRepository(ctx, id)
+	return err
+}
+
+// UpdateRepository converts echo context to params.
+func (w *ServerInterfaceWrapper) UpdateRepository(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id RepositoryID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.UpdateRepository(ctx, id)
 	return err
 }
 
@@ -364,5 +517,10 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.POST(options.BaseURL+"/users/:id/enable", wrapper.EnableUser, options.OperationMiddlewares["EnableUser"]...)
 	router.POST(options.BaseURL+"/users/:id/disable", wrapper.DisableUser, options.OperationMiddlewares["DisableUser"]...)
 	router.POST(options.BaseURL+"/users/:id/role", wrapper.SetUserRole, options.OperationMiddlewares["SetUserRole"]...)
+	router.GET(options.BaseURL+"/repositories", wrapper.ListRepositories, options.OperationMiddlewares["ListRepositories"]...)
+	router.POST(options.BaseURL+"/repositories", wrapper.CreateRepository, options.OperationMiddlewares["CreateRepository"]...)
+	router.DELETE(options.BaseURL+"/repositories/:id", wrapper.DeleteRepository, options.OperationMiddlewares["DeleteRepository"]...)
+	router.GET(options.BaseURL+"/repositories/:id", wrapper.GetRepository, options.OperationMiddlewares["GetRepository"]...)
+	router.PUT(options.BaseURL+"/repositories/:id", wrapper.UpdateRepository, options.OperationMiddlewares["UpdateRepository"]...)
 
 }

@@ -17,6 +17,8 @@ services:
       AUTH_RP_ORIGINS: https://web.hive.orb.local
       AUTH_SESSION_TTL: 24h
       DB_PATH: /app/tmp/hive.db
+      # Dev only, never reuse: seals repository secrets. Generate one with `openssl rand -base64 32`.
+      DB_ENCRYPTION_KEY: ZGV2LW9ubHktaGl2ZS1lbmNyeXB0aW9uLWtleS0zMmI=
       HTTP_PORT: "8080"
       LOGS_LEVEL: debug
     volumes:
@@ -25,7 +27,7 @@ services:
       - go-build:/root/.cache/go-build
 
   web:
-    image: node:24-alpine
+    image: node:lts-alpine
     working_dir: /app
     # Host node_modules hold macOS native binaries; install Linux ones into the volume.
     command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"

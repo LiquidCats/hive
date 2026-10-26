@@ -432,6 +432,80 @@ func (_c *MockUserRepository_ListUsers_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// ListUsersBefore provides a mock function for the type MockUserRepository
+func (_mock *MockUserRepository) ListUsersBefore(ctx context.Context, before values.UserID, limit int) ([]entities.User, error) {
+	ret := _mock.Called(ctx, before, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListUsersBefore")
+	}
+
+	var r0 []entities.User
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, values.UserID, int) ([]entities.User, error)); ok {
+		return returnFunc(ctx, before, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, values.UserID, int) []entities.User); ok {
+		r0 = returnFunc(ctx, before, limit)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]entities.User)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, values.UserID, int) error); ok {
+		r1 = returnFunc(ctx, before, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockUserRepository_ListUsersBefore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListUsersBefore'
+type MockUserRepository_ListUsersBefore_Call struct {
+	*mock.Call
+}
+
+// ListUsersBefore is a helper method to define mock.On call
+//   - ctx context.Context
+//   - before values.UserID
+//   - limit int
+func (_e *MockUserRepository_Expecter) ListUsersBefore(ctx any, before any, limit any) *MockUserRepository_ListUsersBefore_Call {
+	return &MockUserRepository_ListUsersBefore_Call{Call: _e.mock.On("ListUsersBefore", ctx, before, limit)}
+}
+
+func (_c *MockUserRepository_ListUsersBefore_Call) Run(run func(ctx context.Context, before values.UserID, limit int)) *MockUserRepository_ListUsersBefore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 values.UserID
+		if args[1] != nil {
+			arg1 = args[1].(values.UserID)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockUserRepository_ListUsersBefore_Call) Return(users []entities.User, err error) *MockUserRepository_ListUsersBefore_Call {
+	_c.Call.Return(users, err)
+	return _c
+}
+
+func (_c *MockUserRepository_ListUsersBefore_Call) RunAndReturn(run func(ctx context.Context, before values.UserID, limit int) ([]entities.User, error)) *MockUserRepository_ListUsersBefore_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetUserRoleByID provides a mock function for the type MockUserRepository
 func (_mock *MockUserRepository) SetUserRoleByID(ctx context.Context, id values.UserID, role values0.Role) error {
 	ret := _mock.Called(ctx, id, role)

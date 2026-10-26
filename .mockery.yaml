@@ -24,3 +24,5 @@ packages:
       SessionRepository:
       CredentialRepository:
       CeremonyRepository:
+      RepoRepository:
+      GitRemote:

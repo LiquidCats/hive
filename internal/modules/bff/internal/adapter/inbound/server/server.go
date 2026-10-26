@@ -42,12 +42,19 @@ var (
 type Server struct {
 	auth       ports.Auth
 	users      ports.Users
+	repos      ports.Repos
 	log        kernelports.Logger[any]
 	sessionTTL time.Duration
 }
 
-func NewServer(auth ports.Auth, users ports.Users, log kernelports.Logger[any], sessionTTL time.Duration) *Server {
-	return &Server{auth: auth, users: users, log: log, sessionTTL: sessionTTL}
+func NewServer(
+	auth ports.Auth,
+	users ports.Users,
+	repos ports.Repos,
+	log kernelports.Logger[any],
+	sessionTTL time.Duration,
+) *Server {
+	return &Server{auth: auth, users: users, repos: repos, log: log, sessionTTL: sessionTTL}
 }
 
 // RequireSession is the router-wide middleware (echo Use): it runs after routing, so ctx.Path() is the route pattern.
@@ -168,25 +175,18 @@ func (s *Server) Logout(ctx *echo.Context) error {
 
 // ListUsers implements [ServerInterface].
 func (s *Server) ListUsers(ctx *echo.Context, params ListUsersParams) error {
-	var after values.UserID
-
-	if params.Cursor != nil {
-		var err error
-		if after, err = uuid.Parse(*params.Cursor); err != nil {
-			return s.fail(ctx, errBadRequest)
-		}
+	cursor, err := parseCursor(params.Cursor)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
 	}
 
-	users, next, err := s.users.ListUsers(ctx.Request().Context(), currentUser(ctx), after)
+	users, cursors, err := s.users.ListUsers(ctx.Request().Context(), currentUser(ctx), cursor)
 	if err != nil {
 		return s.fail(ctx, err)
 	}
 
 	resp := UsersPage{Users: make([]User, len(users))}
-	if next != (values.UserID{}) {
-		cursor := next.String()
-		resp.NextCursor = &cursor
-	}
+	resp.NextCursor, resp.PreviousCursor = formatCursor(cursors.Next), formatCursor(cursors.Prev)
 
 	for i, user := range users {
 		resp.Users[i] = User{
@@ -253,6 +253,128 @@ func (s *Server) SetUserRole(ctx *echo.Context, id UserID) error {
 	return ctx.NoContent(http.StatusNoContent)
 }
 
+// ListRepositories implements [ServerInterface].
+func (s *Server) ListRepositories(ctx *echo.Context, params ListRepositoriesParams) error {
+	cursor, err := parseCursor(params.Cursor)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	repos, cursors, err := s.repos.ListRepos(ctx.Request().Context(), currentUser(ctx), cursor)
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	resp := RepositoriesPage{Repositories: make([]Repository, len(repos))}
+	resp.NextCursor, resp.PreviousCursor = formatCursor(cursors.Next), formatCursor(cursors.Prev)
+
+	for i, repo := range repos {
+		resp.Repositories[i] = toRepository(repo)
+	}
+
+	return ctx.JSON(http.StatusOK, resp)
+}
+
+// CreateRepository implements [ServerInterface].
+func (s *Server) CreateRepository(ctx *echo.Context) error {
+	var req RepositoryInput
+	if err := ctx.Bind(&req); err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	repo, err := s.repos.CreateRepo(ctx.Request().Context(), currentUser(ctx), toRepoInput(req))
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusCreated, toRepository(*repo))
+}
+
+// GetRepository implements [ServerInterface].
+func (s *Server) GetRepository(ctx *echo.Context, id RepositoryID) error {
+	repoID, err := uuid.Parse(id)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	repo, err := s.repos.GetRepo(ctx.Request().Context(), currentUser(ctx), repoID)
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusOK, toRepository(*repo))
+}
+
+// UpdateRepository implements [ServerInterface].
+func (s *Server) UpdateRepository(ctx *echo.Context, id RepositoryID) error {
+	repoID, err := uuid.Parse(id)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	var req RepositoryInput
+	if err = ctx.Bind(&req); err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	repo, err := s.repos.UpdateRepo(ctx.Request().Context(), currentUser(ctx), repoID, toRepoInput(req))
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusOK, toRepository(*repo))
+}
+
+// DeleteRepository implements [ServerInterface].
+func (s *Server) DeleteRepository(ctx *echo.Context, id RepositoryID) error {
+	repoID, err := uuid.Parse(id)
+	if err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	if err = s.repos.DeleteRepo(ctx.Request().Context(), currentUser(ctx), repoID); err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.NoContent(http.StatusNoContent)
+}
+
+func toRepoInput(req RepositoryInput) entities.RepoInput {
+	return entities.RepoInput{
+		Name:          deref(req.Name),
+		URL:           req.Url,
+		Username:      deref(req.Username),
+		Password:      req.Password,
+		SSHPrivateKey: req.SshPrivateKey,
+		Insecure:      deref(req.Insecure),
+	}
+}
+
+// toRepository maps the repository without its secrets.
+func toRepository(repo entities.Repo) Repository {
+	return Repository{
+		Id:               repo.ID.String(),
+		Name:             repo.Name,
+		Url:              repo.URL,
+		Username:         repo.Username,
+		Insecure:         repo.Insecure,
+		HasPassword:      repo.Password != "",
+		HasSshPrivateKey: repo.SSHPrivateKey != "",
+		CreatedAt:        repo.CreatedAt,
+		UpdatedAt:        repo.UpdatedAt,
+	}
+}
+
+func deref[T any](v *T) T {
+	if v == nil {
+		var zero T
+
+		return zero
+	}
+
+	return *v
+}
+
 // currentUser is the user RequireSession stored; nil on public routes.
 func currentUser(ctx *echo.Context) *entities.User {
 	user, _ := ctx.Get(userKey).(*entities.User)
@@ -294,6 +416,28 @@ func (s *Server) fail(ctx *echo.Context, err error) error {
 		status, code, msg = http.StatusConflict, "user_disabled", "Approve or enable the user first"
 	case errors.Is(err, domainerrors.ErrUserNotFound):
 		status, code, msg = http.StatusNotFound, "user_not_found", "User not found"
+	case errors.Is(err, domainerrors.ErrInvalidRepoName):
+		status, code, msg = http.StatusBadRequest, "invalid_repo_name", "Name must be at most 255 characters"
+	case errors.Is(err, domainerrors.ErrInvalidRepoURL):
+		status, code, msg = http.StatusBadRequest, "invalid_repo_url",
+			"URL must be https://host/path, ssh://[user@]host[:port]/path or user@host:path, without a password"
+	case errors.Is(err, domainerrors.ErrInvalidRepoCredentials):
+		status, code, msg = http.StatusBadRequest, "invalid_repo_credentials",
+			"https URLs take a username and password, ssh URLs take a valid unencrypted SSH private key"
+	case errors.Is(err, domainerrors.ErrRepoCredentialsRequired):
+		status, code, msg = http.StatusBadRequest, "repo_credentials_required",
+			"Enter the credentials again when changing the URL"
+	case errors.Is(err, domainerrors.ErrRepoAccessDenied):
+		status, code, msg = http.StatusBadRequest, "repo_access_denied", "Repository not found or credentials rejected"
+		// Details stay in logs: they would turn the check into a probe of the server's network.
+		s.log.Warn("repository access denied", logs.ErisError(err))
+	case errors.Is(err, domainerrors.ErrRepoUnreachable):
+		status, code, msg = http.StatusBadRequest, "repo_unreachable", "Could not connect to the repository"
+		s.log.Warn("repository unreachable", logs.ErisError(err))
+	case errors.Is(err, domainerrors.ErrRepoURLTaken):
+		status, code, msg = http.StatusConflict, "repo_url_taken", "A repository with this URL already exists"
+	case errors.Is(err, domainerrors.ErrRepoNotFound):
+		status, code, msg = http.StatusNotFound, "repo_not_found", "Repository not found"
 	case errors.Is(err, domainerrors.ErrUnauthenticated):
 		status, code, msg = http.StatusUnauthorized, "unauthenticated", "Sign in required"
 	case errors.Is(err, domainerrors.ErrForbidden):
@@ -309,4 +453,23 @@ func (s *Server) fail(ctx *echo.Context, err error) error {
 	}
 
 	return ctx.JSON(status, Error{Code: code, Message: msg})
+}
+
+// parseCursor reads the optional cursor query parameter; absent is the first page.
+func parseCursor(param *string) (domainvalues.Cursor, error) {
+	if param == nil {
+		return domainvalues.Cursor{}, nil
+	}
+
+	return domainvalues.ParseCursor(*param)
+}
+
+func formatCursor(c *domainvalues.Cursor) *string {
+	if c == nil {
+		return nil
+	}
+
+	s := c.String()
+
+	return &s
 }
