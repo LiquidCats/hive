@@ -7,9 +7,10 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
 // /auth/sign-in, /users and /repositories are also SPA routes: page loads stay with vite, fetches go to the BFF.
+// Host is kept (no changeOrigin): the BFF's CrossOriginProtection falls back to Origin == Host when a browser
+// omits Sec-Fetch-Site, and a rewritten Host (bff:8080) would reject every same-origin POST.
 const bff: ProxyOptions = {
   target: process.env.BFF_URL ?? 'http://localhost:8080',
-  changeOrigin: true,
   bypass: (req) => (req.headers.accept?.includes('text/html') ? req.url : undefined),
 }
 
