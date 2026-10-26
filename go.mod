@@ -6,7 +6,7 @@ require (
 	github.com/LiquidCats/libraries/cfg v1.0.0
 	github.com/LiquidCats/libraries/db/v2 v2.0.0
 	github.com/LiquidCats/libraries/graceful v1.0.1
-	github.com/fxamacker/cbor/v2 v2.9.4
+	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/labstack/echo/v5 v5.4.0
