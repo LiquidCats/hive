@@ -9,7 +9,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-webauthn/webauthn v0.18.2
-	github.com/labstack/echo/v5 v5.4.0
+	github.com/labstack/echo/v5 v5.4.2
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/rotisserie/eris v0.5.4
 	github.com/stretchr/testify v1.12.1
