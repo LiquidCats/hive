@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/LiquidCats/libraries/cfg v1.0.0
-	github.com/LiquidCats/libraries/db/v2 v2.0.0
+	github.com/LiquidCats/libraries/db/v2 v2.0.1
 	github.com/LiquidCats/libraries/graceful v1.0.1
 	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/go-git/go-git/v5 v5.19.3
