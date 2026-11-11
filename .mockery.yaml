@@ -26,3 +26,4 @@ packages:
       CeremonyRepository:
       RepoRepository:
       GitRemote:
+      Swarm:

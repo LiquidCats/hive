@@ -12,6 +12,8 @@ tags:
     description: User management
   - name: repositories
     description: Git repositories the system deploys from
+  - name: nodes
+    description: Docker swarm nodes
 
 # Every operation requires a session unless it sets `security: []`;
 # the server enforces the same public list (server.publicPaths).
@@ -216,6 +218,81 @@ paths:
           $ref: "#/components/responses/Empty"
         default:
           $ref: "#/components/responses/Error"
+  /nodes:
+    get:
+      tags: [nodes]
+      operationId: ListNodes
+      description: Every node, managers first; 503 swarm_unavailable if Docker is unreachable or not a manager.
+      responses:
+        "200":
+          $ref: "#/components/responses/Nodes"
+        default:
+          $ref: "#/components/responses/Error"
+  /nodes/join:
+    get:
+      tags: [nodes]
+      operationId: GetJoinInfo
+      description: Admin, although a read; the tokens let any host join the swarm.
+      responses:
+        "200":
+          $ref: "#/components/responses/JoinInfo"
+        default:
+          $ref: "#/components/responses/Error"
+  /nodes/{id}:
+    delete:
+      tags: [nodes]
+      operationId: RemoveNode
+      description: |
+        Admin. Docker refuses (409 node_rejected) a node that is not down unless force is set,
+        and a manager until it is demoted.
+      parameters:
+        - $ref: "#/components/parameters/NodeID"
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /nodes/{id}/role:
+    put:
+      tags: [nodes]
+      operationId: SetNodeRole
+      description: Admin. Promotes or demotes; 409 node_rejected if Docker refuses (e.g. the last manager).
+      parameters:
+        - $ref: "#/components/parameters/NodeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeRoleRequest"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
+  /nodes/{id}/availability:
+    put:
+      tags: [nodes]
+      operationId: SetNodeAvailability
+      description: Admin. drain moves the node's tasks away, pause keeps them but schedules no new ones.
+      parameters:
+        - $ref: "#/components/parameters/NodeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NodeAvailabilityRequest"
+      responses:
+        "204":
+          $ref: "#/components/responses/Empty"
+        default:
+          $ref: "#/components/responses/Error"
 components:
   securitySchemes:
     # Opaque random token set HttpOnly by register/login finish; the server stores only its hash.
@@ -238,6 +315,13 @@ components:
       schema:
         type: string
         description: UUID
+    NodeID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Docker node ID
     Cursor:
       name: cursor
       in: query
@@ -407,6 +491,75 @@ components:
         previousCursor:
           type: string
           description: Pass as `cursor` for the previous page; absent on the first page.
+    NodeRole:
+      type: string
+      enum: [manager, worker]
+    NodeAvailability:
+      type: string
+      enum: [active, pause, drain]
+    NodeRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: "#/components/schemas/NodeRole"
+    NodeAvailabilityRequest:
+      type: object
+      required: [availability]
+      properties:
+        availability:
+          $ref: "#/components/schemas/NodeAvailability"
+    Node:
+      type: object
+      required: [id, hostname, role, leader, state, availability, addr, engine, os, arch, nanoCpus, memoryBytes]
+      properties:
+        id:
+          type: string
+        hostname:
+          type: string
+        role:
+          $ref: "#/components/schemas/NodeRole"
+        leader:
+          type: boolean
+        state:
+          type: string
+          description: ready, down, disconnected or unknown
+        availability:
+          $ref: "#/components/schemas/NodeAvailability"
+        addr:
+          type: string
+        engine:
+          type: string
+          description: Docker engine version
+        os:
+          type: string
+        arch:
+          type: string
+        nanoCpus:
+          type: integer
+          format: int64
+        memoryBytes:
+          type: integer
+          format: int64
+    NodesList:
+      type: object
+      required: [nodes]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Node"
+    JoinInfo:
+      type: object
+      required: [workerToken, managerToken, managerAddr]
+      properties:
+        workerToken:
+          type: string
+        managerToken:
+          type: string
+        managerAddr:
+          type: string
+          description: The leader's host:port
     # Opaque on purpose: the WebAuthn JSON shapes are defined by the W3C spec
     # and parsed by go-webauthn, not by this API.
     WebauthnChallenge:
@@ -479,6 +632,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/RepositoriesPage"
+    Nodes:
+      description: Swarm nodes
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NodesList"
+    JoinInfo:
+      description: Join tokens and manager address
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/JoinInfo"
     Error:
       description: Error
       content:

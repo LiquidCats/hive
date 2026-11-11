@@ -26,3 +26,19 @@ var (
 	ErrRepoAccessDenied = eris.New("repository not found or credentials rejected")
 	ErrRepoUnreachable  = eris.New("could not connect to the repository")
 )
+
+var (
+	ErrNodeNotFound            = eris.New("node not found")
+	ErrInvalidNodeRole         = eris.New("invalid node role")
+	ErrInvalidNodeAvailability = eris.New("invalid node availability")
+	// ErrSwarmUnavailable wraps why Docker could not be reached or is not a swarm manager.
+	ErrSwarmUnavailable = eris.New("swarm unavailable")
+)
+
+// NodeRejectedError is Docker refusing a node change (node not down, last manager...);
+// Reason is Docker's explanation, shown to admins.
+type NodeRejectedError struct {
+	Reason string
+}
+
+func (e NodeRejectedError) Error() string { return "docker rejected the node change: " + e.Reason }

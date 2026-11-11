@@ -85,3 +85,19 @@ type GitRemote interface {
 	// [errors.ErrInvalidRepoCredentials] if the SSH key does not parse, [errors.ErrRepoUnreachable] otherwise.
 	Check(ctx context.Context, repo entities.Repo) error
 }
+
+type Swarm interface {
+	// ListNodes returns every node, managers first.
+	ListNodes(ctx context.Context) ([]entities.Node, error)
+	// JoinInfo returns the join tokens and the leader's address.
+	JoinInfo(ctx context.Context) (*entities.JoinInfo, error)
+	// SetNodeRole promotes or demotes the node.
+	SetNodeRole(ctx context.Context, id string, role entities.NodeRole) error
+	// SetNodeAvailability sets whether the node takes tasks.
+	SetNodeAvailability(ctx context.Context, id string, availability entities.NodeAvailability) error
+	// RemoveNode removes the node from the swarm; force removes a node that is not down.
+	//
+	// Every method returns [errors.ErrNodeNotFound] for unknown nodes, [errors.NodeRejectedError] when Docker refuses
+	// the change and [errors.ErrSwarmUnavailable] when Docker is unreachable or not a swarm manager.
+	RemoveNode(ctx context.Context, id string, force bool) error
+}

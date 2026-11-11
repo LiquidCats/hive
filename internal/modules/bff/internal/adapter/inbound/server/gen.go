@@ -12,18 +12,57 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for NodeAvailability.
+const (
+	NodeAvailabilityActive NodeAvailability = "active"
+	NodeAvailabilityDrain  NodeAvailability = "drain"
+	NodeAvailabilityPause  NodeAvailability = "pause"
+)
+
+// Valid indicates whether the value is a known member of the NodeAvailability enum.
+func (e NodeAvailability) Valid() bool {
+	switch e {
+	case NodeAvailabilityActive:
+		return true
+	case NodeAvailabilityDrain:
+		return true
+	case NodeAvailabilityPause:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NodeRole.
+const (
+	Manager NodeRole = "manager"
+	Worker  NodeRole = "worker"
+)
+
+// Valid indicates whether the value is a known member of the NodeRole enum.
+func (e NodeRole) Valid() bool {
+	switch e {
+	case Manager:
+		return true
+	case Worker:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegistrationResultStatus.
 const (
-	Active          RegistrationResultStatus = "active"
-	PendingApproval RegistrationResultStatus = "pending_approval"
+	RegistrationResultStatusActive          RegistrationResultStatus = "active"
+	RegistrationResultStatusPendingApproval RegistrationResultStatus = "pending_approval"
 )
 
 // Valid indicates whether the value is a known member of the RegistrationResultStatus enum.
 func (e RegistrationResultStatus) Valid() bool {
 	switch e {
-	case Active:
+	case RegistrationResultStatusActive:
 		return true
-	case PendingApproval:
+	case RegistrationResultStatusPendingApproval:
 		return true
 	default:
 		return false
@@ -55,6 +94,55 @@ func (e Role) Valid() bool {
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+}
+
+// JoinInfo defines model for JoinInfo.
+type JoinInfo struct {
+	// ManagerAddr The leader's host:port
+	ManagerAddr  string `json:"managerAddr"`
+	ManagerToken string `json:"managerToken"`
+	WorkerToken  string `json:"workerToken"`
+}
+
+// Node defines model for Node.
+type Node struct {
+	Addr         string           `json:"addr"`
+	Arch         string           `json:"arch"`
+	Availability NodeAvailability `json:"availability"`
+
+	// Engine Docker engine version
+	Engine      string   `json:"engine"`
+	Hostname    string   `json:"hostname"`
+	Id          string   `json:"id"`
+	Leader      bool     `json:"leader"`
+	MemoryBytes int64    `json:"memoryBytes"`
+	NanoCpus    int64    `json:"nanoCpus"`
+	Os          string   `json:"os"`
+	Role        NodeRole `json:"role"`
+
+	// State ready, down, disconnected or unknown
+	State string `json:"state"`
+}
+
+// NodeAvailability defines model for NodeAvailability.
+type NodeAvailability string
+
+// NodeAvailabilityRequest defines model for NodeAvailabilityRequest.
+type NodeAvailabilityRequest struct {
+	Availability NodeAvailability `json:"availability"`
+}
+
+// NodeRole defines model for NodeRole.
+type NodeRole string
+
+// NodeRoleRequest defines model for NodeRoleRequest.
+type NodeRoleRequest struct {
+	Role NodeRole `json:"role"`
+}
+
+// NodesList defines model for NodesList.
+type NodesList struct {
+	Nodes []Node `json:"nodes"`
 }
 
 // RegistrationResult defines model for RegistrationResult.
@@ -163,11 +251,17 @@ type WebauthnChallenge = map[string]interface{}
 // Cursor defines model for Cursor.
 type Cursor = string
 
+// NodeID Docker node ID
+type NodeID = string
+
 // RepositoryID UUID
 type RepositoryID = string
 
 // UserID UUID
 type UserID = string
+
+// Nodes defines model for Nodes.
+type Nodes = NodesList
 
 // Registration defines model for Registration.
 type Registration = RegistrationResult
@@ -181,6 +275,11 @@ type Users = UsersPage
 // Username defines model for Username.
 type Username = UsernameRequest
 
+// RemoveNodeParams defines parameters for RemoveNode.
+type RemoveNodeParams struct {
+	Force *bool `form:"force,omitempty" json:"force,omitempty"`
+}
+
 // ListRepositoriesParams defines parameters for ListRepositories.
 type ListRepositoriesParams struct {
 	// Cursor nextCursor or previousCursor of a page; omit for the first page.
@@ -192,6 +291,12 @@ type ListUsersParams struct {
 	// Cursor nextCursor or previousCursor of a page; omit for the first page.
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// SetNodeAvailabilityJSONRequestBody defines body for SetNodeAvailability for application/json ContentType.
+type SetNodeAvailabilityJSONRequestBody = NodeAvailabilityRequest
+
+// SetNodeRoleJSONRequestBody defines body for SetNodeRole for application/json ContentType.
+type SetNodeRoleJSONRequestBody = NodeRoleRequest
 
 // CreateRepositoryJSONRequestBody defines body for CreateRepository for application/json ContentType.
 type CreateRepositoryJSONRequestBody = RepositoryInput
@@ -219,6 +324,21 @@ type ServerInterface interface {
 
 	// (GET /auth/session)
 	GetSession(ctx *echo.Context) error
+
+	// (GET /nodes)
+	ListNodes(ctx *echo.Context) error
+
+	// (GET /nodes/join)
+	GetJoinInfo(ctx *echo.Context) error
+
+	// (DELETE /nodes/{id})
+	RemoveNode(ctx *echo.Context, id NodeID, params RemoveNodeParams) error
+
+	// (PUT /nodes/{id}/availability)
+	SetNodeAvailability(ctx *echo.Context, id NodeID) error
+
+	// (PUT /nodes/{id}/role)
+	SetNodeRole(ctx *echo.Context, id NodeID) error
 
 	// (GET /repositories)
 	ListRepositories(ctx *echo.Context, params ListRepositoriesParams) error
@@ -280,6 +400,81 @@ func (w *ServerInterfaceWrapper) GetSession(ctx *echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetSession(ctx)
+	return err
+}
+
+// ListNodes converts echo context to params.
+func (w *ServerInterfaceWrapper) ListNodes(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.ListNodes(ctx)
+	return err
+}
+
+// GetJoinInfo converts echo context to params.
+func (w *ServerInterfaceWrapper) GetJoinInfo(ctx *echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.GetJoinInfo(ctx)
+	return err
+}
+
+// RemoveNode converts echo context to params.
+func (w *ServerInterfaceWrapper) RemoveNode(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveNodeParams
+	// ------------- Optional query parameter "force" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force", ctx.QueryParams(), &params.Force, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter force: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.RemoveNode(ctx, id, params)
+	return err
+}
+
+// SetNodeAvailability converts echo context to params.
+func (w *ServerInterfaceWrapper) SetNodeAvailability(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetNodeAvailability(ctx, id)
+	return err
+}
+
+// SetNodeRole converts echo context to params.
+func (w *ServerInterfaceWrapper) SetNodeRole(ctx *echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id NodeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: ctx.Request().URL.RawPath == ""})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.SetNodeRole(ctx, id)
 	return err
 }
 
@@ -522,5 +717,10 @@ func RegisterHandlersWithOptions(router EchoRouter, si ServerInterface, options 
 	router.DELETE(options.BaseURL+"/repositories/:id", wrapper.DeleteRepository, options.OperationMiddlewares["DeleteRepository"]...)
 	router.GET(options.BaseURL+"/repositories/:id", wrapper.GetRepository, options.OperationMiddlewares["GetRepository"]...)
 	router.PUT(options.BaseURL+"/repositories/:id", wrapper.UpdateRepository, options.OperationMiddlewares["UpdateRepository"]...)
+	router.GET(options.BaseURL+"/nodes", wrapper.ListNodes, options.OperationMiddlewares["ListNodes"]...)
+	router.GET(options.BaseURL+"/nodes/join", wrapper.GetJoinInfo, options.OperationMiddlewares["GetJoinInfo"]...)
+	router.DELETE(options.BaseURL+"/nodes/:id", wrapper.RemoveNode, options.OperationMiddlewares["RemoveNode"]...)
+	router.PUT(options.BaseURL+"/nodes/:id/role", wrapper.SetNodeRole, options.OperationMiddlewares["SetNodeRole"]...)
+	router.PUT(options.BaseURL+"/nodes/:id/availability", wrapper.SetNodeAvailability, options.OperationMiddlewares["SetNodeAvailability"]...)
 
 }

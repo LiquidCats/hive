@@ -9,10 +9,12 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/moby/moby/client"
 
 	"github.com/LiquidCats/hive/internal/kernel/ports"
 	"github.com/LiquidCats/hive/internal/modules/bff/configs"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/inbound/server"
+	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/docker"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/git"
 	"github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite"
 	queries "github.com/LiquidCats/hive/internal/modules/bff/internal/adapter/outbound/sqlite/db"
@@ -86,8 +88,19 @@ func Run(ctx context.Context, logger ports.Logger[any], cfg configs.Config) {
 
 	repo := sqlite.NewRepository(queriesTxManager, aead)
 
+	// Reads DOCKER_HOST (default unix:///var/run/docker.sock), DOCKER_TLS_VERIFY and DOCKER_CERT_PATH;
+	// connects lazily, so a missing daemon only fails the nodes endpoints (503).
+	dockerClient, err := client.New(client.FromEnv)
+	if err != nil {
+		logger.Error("failed to create docker client", logs.ErisError(err))
+
+		return
+	}
+	defer dockerClient.Close()
+
 	auth := app.NewAuth(wn, repo, repo, repo, repo, clock.New(), cfg.Auth.SessionTTL)
-	srv := server.NewServer(auth, app.NewUsers(repo), app.NewRepos(repo, git.Remote{}), logger, cfg.Auth.SessionTTL)
+	srv := server.NewServer(auth, app.NewUsers(repo), app.NewRepos(repo, git.Remote{}),
+		app.NewNodes(docker.NewSwarm(dockerClient)), logger, cfg.Auth.SessionTTL)
 
 	// Rejects cross-origin non-GET browser requests (Sec-Fetch-Site / Origin); SameSite alone lets same-site
 	// origins such as sibling subdomains through. The web app origins are trusted for a cross-origin API URL.

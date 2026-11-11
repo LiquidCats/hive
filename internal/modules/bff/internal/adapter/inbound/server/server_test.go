@@ -80,6 +80,7 @@ func (s *AuthSuite) SetupTest() {
 		app.NewAuth(wn, repo, repo, repo, repo, s.clock, sessionTTL),
 		app.NewUsers(repo),
 		app.NewRepos(repo, mocks.NewMockGitRemote(s.T())),
+		app.NewNodes(mocks.NewMockSwarm(s.T())),
 		slog.New(slog.DiscardHandler),
 		sessionTTL,
 	)

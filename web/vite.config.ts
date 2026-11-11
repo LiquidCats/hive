@@ -1,12 +1,11 @@
 import { fileURLToPath, URL } from 'node:url'
-import path from 'node:path'
 
 import { defineConfig, type ProxyOptions } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
-// /auth/sign-in, /users and /repositories are also SPA routes: page loads stay with vite, fetches go to the BFF.
+// /auth/sign-in, /users, /repositories and /nodes are also SPA routes: page loads stay with vite, fetches go to the BFF.
 // Host is kept (no changeOrigin): the BFF's CrossOriginProtection falls back to Origin == Host when a browser
 // omits Sec-Fetch-Site, and a rewritten Host (bff:8080) would reject every same-origin POST.
 const bff: ProxyOptions = {
@@ -21,7 +20,7 @@ export default defineConfig({
   server: {
     allowedHosts: ['web.hive.orb.local'],
     proxy: Object.fromEntries(
-      ['/webauthn', '/auth', '/users', '/repositories'].map((prefix) => [prefix, bff]),
+      ['/webauthn', '/auth', '/users', '/repositories', '/nodes'].map((prefix) => [prefix, bff]),
     ),
   },
   resolve: {

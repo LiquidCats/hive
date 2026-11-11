@@ -30,7 +30,7 @@ func (r *Repos) ListRepos(
 	actor *entities.User,
 	cursor values.Cursor,
 ) ([]entities.Repo, values.Cursors, error) {
-	if err := authorizeRepos(actor, false); err != nil {
+	if err := authorizeRole(actor, false); err != nil {
 		return nil, values.Cursors{}, err
 	}
 
@@ -45,7 +45,7 @@ func (r *Repos) ListRepos(
 
 // GetRepo implements [ports.Repos].
 func (r *Repos) GetRepo(ctx context.Context, actor *entities.User, id kernelvalues.RepoID) (*entities.Repo, error) {
-	if err := authorizeRepos(actor, false); err != nil {
+	if err := authorizeRole(actor, false); err != nil {
 		return nil, err
 	}
 
@@ -56,7 +56,7 @@ func (r *Repos) GetRepo(ctx context.Context, actor *entities.User, id kernelvalu
 
 // CreateRepo implements [ports.Repos].
 func (r *Repos) CreateRepo(ctx context.Context, actor *entities.User, in entities.RepoInput) (*entities.Repo, error) {
-	if err := authorizeRepos(actor, true); err != nil {
+	if err := authorizeRole(actor, true); err != nil {
 		return nil, err
 	}
 
@@ -81,7 +81,7 @@ func (r *Repos) UpdateRepo(
 	id kernelvalues.RepoID,
 	in entities.RepoInput,
 ) (*entities.Repo, error) {
-	if err := authorizeRepos(actor, true); err != nil {
+	if err := authorizeRole(actor, true); err != nil {
 		return nil, err
 	}
 
@@ -106,7 +106,7 @@ func (r *Repos) UpdateRepo(
 
 // DeleteRepo implements [ports.Repos].
 func (r *Repos) DeleteRepo(ctx context.Context, actor *entities.User, id kernelvalues.RepoID) error {
-	if err := authorizeRepos(actor, true); err != nil {
+	if err := authorizeRole(actor, true); err != nil {
 		return err
 	}
 
@@ -122,9 +122,9 @@ func (r *Repos) check(ctx context.Context, repo entities.Repo) error {
 	return eris.Wrap(r.remote.Check(ctx, repo), "check repo")
 }
 
-// authorizeRepos lets every signed-in user read and admins write. The server checks roles too; repeated here
+// authorizeRole lets every signed-in user read and admins write. The server checks roles too; repeated here
 // so every inbound adapter gets it, before any lookup so readers cannot probe through write errors.
-func authorizeRepos(actor *entities.User, write bool) error {
+func authorizeRole(actor *entities.User, write bool) error {
 	if actor == nil || (write && actor.Role < values.RoleAdmin) {
 		return domainerrors.ErrForbidden
 	}
