@@ -43,6 +43,7 @@ type Server struct {
 	auth       ports.Auth
 	users      ports.Users
 	repos      ports.Repos
+	nodes      ports.Nodes
 	log        kernelports.Logger[any]
 	sessionTTL time.Duration
 }
@@ -51,10 +52,11 @@ func NewServer(
 	auth ports.Auth,
 	users ports.Users,
 	repos ports.Repos,
+	nodes ports.Nodes,
 	log kernelports.Logger[any],
 	sessionTTL time.Duration,
 ) *Server {
-	return &Server{auth: auth, users: users, repos: repos, log: log, sessionTTL: sessionTTL}
+	return &Server{auth: auth, users: users, repos: repos, nodes: nodes, log: log, sessionTTL: sessionTTL}
 }
 
 // RequireSession is the router-wide middleware (echo Use): it runs after routing, so ctx.Path() is the route pattern.
@@ -112,14 +114,14 @@ func (s *Server) CreateChallengeResponse(ctx *echo.Context) error {
 
 	switch {
 	case errors.Is(err, domainerrors.ErrApprovalPending):
-		return ctx.JSON(http.StatusOK, RegistrationResult{Status: PendingApproval})
+		return ctx.JSON(http.StatusOK, RegistrationResult{Status: RegistrationResultStatusPendingApproval})
 	case err != nil:
 		return s.fail(ctx, err)
 	}
 
 	s.setSessionCookie(ctx, token, int(s.sessionTTL.Seconds()))
 
-	return ctx.JSON(http.StatusOK, RegistrationResult{Status: Active})
+	return ctx.JSON(http.StatusOK, RegistrationResult{Status: RegistrationResultStatusActive})
 }
 
 // LoginChallenge implements [ServerInterface].
@@ -339,6 +341,89 @@ func (s *Server) DeleteRepository(ctx *echo.Context, id RepositoryID) error {
 	return ctx.NoContent(http.StatusNoContent)
 }
 
+// ListNodes implements [ServerInterface].
+func (s *Server) ListNodes(ctx *echo.Context) error {
+	nodes, err := s.nodes.ListNodes(ctx.Request().Context(), currentUser(ctx))
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	resp := NodesList{Nodes: make([]Node, len(nodes))}
+	for i, n := range nodes {
+		resp.Nodes[i] = Node{
+			Id:           n.ID,
+			Hostname:     n.Hostname,
+			Role:         NodeRole(n.Role),
+			Leader:       n.Leader,
+			State:        n.State,
+			Availability: NodeAvailability(n.Availability),
+			Addr:         n.Addr,
+			Engine:       n.Engine,
+			Os:           n.OS,
+			Arch:         n.Arch,
+			NanoCpus:     n.NanoCPUs,
+			MemoryBytes:  n.MemoryBytes,
+		}
+	}
+
+	return ctx.JSON(http.StatusOK, resp)
+}
+
+// GetJoinInfo implements [ServerInterface].
+func (s *Server) GetJoinInfo(ctx *echo.Context) error {
+	info, err := s.nodes.JoinInfo(ctx.Request().Context(), currentUser(ctx))
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.JSON(http.StatusOK, JoinInfo{
+		WorkerToken:  info.WorkerToken,
+		ManagerToken: info.ManagerToken,
+		ManagerAddr:  info.ManagerAddr,
+	})
+}
+
+// SetNodeRole implements [ServerInterface].
+func (s *Server) SetNodeRole(ctx *echo.Context, id NodeID) error {
+	var req NodeRoleRequest
+	if err := ctx.Bind(&req); err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	err := s.nodes.SetNodeRole(ctx.Request().Context(), currentUser(ctx), id, entities.NodeRole(req.Role))
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.NoContent(http.StatusNoContent)
+}
+
+// SetNodeAvailability implements [ServerInterface].
+func (s *Server) SetNodeAvailability(ctx *echo.Context, id NodeID) error {
+	var req NodeAvailabilityRequest
+	if err := ctx.Bind(&req); err != nil {
+		return s.fail(ctx, errBadRequest)
+	}
+
+	err := s.nodes.SetNodeAvailability(
+		ctx.Request().Context(), currentUser(ctx), id, entities.NodeAvailability(req.Availability),
+	)
+	if err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.NoContent(http.StatusNoContent)
+}
+
+// RemoveNode implements [ServerInterface].
+func (s *Server) RemoveNode(ctx *echo.Context, id NodeID, params RemoveNodeParams) error {
+	if err := s.nodes.RemoveNode(ctx.Request().Context(), currentUser(ctx), id, deref(params.Force)); err != nil {
+		return s.fail(ctx, err)
+	}
+
+	return ctx.NoContent(http.StatusNoContent)
+}
+
 func toRepoInput(req RepositoryInput) entities.RepoInput {
 	return entities.RepoInput{
 		Name:          deref(req.Name),
@@ -395,8 +480,11 @@ func (s *Server) setSessionCookie(ctx *echo.Context, token string, maxAge int) {
 	})
 }
 
+//nolint:funlen // one flat case per domain error reads best
 func (s *Server) fail(ctx *echo.Context, err error) error {
 	status, code, msg := http.StatusInternalServerError, "internal_error", "Something went wrong"
+
+	var rejected domainerrors.NodeRejectedError
 
 	switch {
 	case errors.Is(err, errBadRequest):
@@ -438,6 +526,20 @@ func (s *Server) fail(ctx *echo.Context, err error) error {
 		status, code, msg = http.StatusConflict, "repo_url_taken", "A repository with this URL already exists"
 	case errors.Is(err, domainerrors.ErrRepoNotFound):
 		status, code, msg = http.StatusNotFound, "repo_not_found", "Repository not found"
+	case errors.Is(err, domainerrors.ErrNodeNotFound):
+		status, code, msg = http.StatusNotFound, "node_not_found", "Node not found"
+	case errors.Is(err, domainerrors.ErrInvalidNodeRole):
+		status, code, msg = http.StatusBadRequest, "invalid_node_role", "Role must be manager or worker"
+	case errors.Is(err, domainerrors.ErrInvalidNodeAvailability):
+		status, code, msg = http.StatusBadRequest, "invalid_node_availability",
+			"Availability must be active, pause or drain"
+	case errors.As(err, &rejected):
+		// Docker's own explanation ("node is not down", "demote it first"): only admins can trigger it.
+		status, code, msg = http.StatusConflict, "node_rejected", rejected.Reason
+	case errors.Is(err, domainerrors.ErrSwarmUnavailable):
+		status, code, msg = http.StatusServiceUnavailable, "swarm_unavailable",
+			"Docker is unreachable or this host is not a swarm manager"
+		s.log.Warn("swarm unavailable", logs.ErisError(err))
 	case errors.Is(err, domainerrors.ErrUnauthenticated):
 		status, code, msg = http.StatusUnauthorized, "unauthenticated", "Sign in required"
 	case errors.Is(err, domainerrors.ErrForbidden):

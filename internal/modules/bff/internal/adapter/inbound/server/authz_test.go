@@ -38,6 +38,7 @@ type hive struct {
 	router *echo.Echo
 	repo   *sqlite.Repository
 	remote *mocks.MockGitRemote
+	swarm  *mocks.MockSwarm
 	ids    map[string]kernelvalues.UserID
 }
 
@@ -217,12 +218,14 @@ func newHive(t *testing.T) *hive {
 	repo := sqlite.NewRepository(db.NewQueriesTxManager(db.NewTxManager(conn), queries.New(conn)), testCipher(t))
 	clock := &fakeClock{now: time.Now()}
 	remote := mocks.NewMockGitRemote(t)
+	swarm := mocks.NewMockSwarm(t)
 
 	// Sessions are inserted directly, so no WebAuthn ceremony runs and Auth needs no *webauthn.WebAuthn.
 	srv := server.NewServer(
 		app.NewAuth(nil, repo, repo, repo, repo, clock, sessionTTL),
 		app.NewUsers(repo),
 		app.NewRepos(repo, remote),
+		app.NewNodes(swarm),
 		slog.New(slog.DiscardHandler),
 		sessionTTL,
 	)
@@ -232,7 +235,7 @@ func newHive(t *testing.T) *hive {
 	server.RegisterHandlers(router, srv)
 	router.POST(writePath, func(ctx *echo.Context) error { return ctx.NoContent(http.StatusNoContent) })
 
-	h := &hive{router: router, repo: repo, remote: remote, ids: map[string]kernelvalues.UserID{}}
+	h := &hive{router: router, repo: repo, remote: remote, swarm: swarm, ids: map[string]kernelvalues.UserID{}}
 
 	// Created in this order, the first one is the owner and the rest are pending users.
 	for _, name := range []string{"owner", "admin", "user", "pending"} {
