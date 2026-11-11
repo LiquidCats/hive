@@ -13,7 +13,7 @@ require (
 	github.com/labstack/echo/v5 v5.4.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	github.com/oapi-codegen/runtime v1.7.0
+	github.com/oapi-codegen/runtime v1.8.0
 	github.com/rotisserie/eris v0.5.4
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.58.0
