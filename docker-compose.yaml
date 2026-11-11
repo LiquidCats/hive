@@ -23,6 +23,9 @@ services:
       LOGS_LEVEL: debug
     volumes:
       - .:/app
+      # Nodes management talks to the host's Docker; it must be a swarm manager (`docker swarm init`).
+      # The socket is root on the host: dev only.
+      - /var/run/docker.sock:/var/run/docker.sock
       - go-mod:/go/pkg/mod
       - go-build:/root/.cache/go-build
 
