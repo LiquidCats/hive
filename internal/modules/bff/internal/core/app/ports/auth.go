@@ -67,3 +67,17 @@ type Repos interface {
 	// DeleteRepo deletes the repository; [errors.ErrRepoNotFound] if missing.
 	DeleteRepo(ctx context.Context, actor *entities.User, id values.RepoID) error
 }
+
+// Nodes is the inbound port: docker swarm nodes. Every signed-in user may list; join tokens and writes
+// need an admin. Methods return [errors.ErrForbidden] otherwise, before calling Docker; other errors as [Swarm].
+type Nodes interface {
+	ListNodes(ctx context.Context, actor *entities.User) ([]entities.Node, error)
+	JoinInfo(ctx context.Context, actor *entities.User) (*entities.JoinInfo, error)
+	// SetNodeRole returns [errors.ErrInvalidNodeRole] unless role is worker or manager.
+	SetNodeRole(ctx context.Context, actor *entities.User, id string, role entities.NodeRole) error
+	// SetNodeAvailability returns [errors.ErrInvalidNodeAvailability] unless it is active, pause or drain.
+	SetNodeAvailability(
+		ctx context.Context, actor *entities.User, id string, availability entities.NodeAvailability,
+	) error
+	RemoveNode(ctx context.Context, actor *entities.User, id string, force bool) error
+}
